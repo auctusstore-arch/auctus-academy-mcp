@@ -1,0 +1,56 @@
+# Auctus MCP — Phase 0 scaffold. No deploy scripts; use `wrangler dev` locally.
+name = "auctus-mcp"
+main = "src/index.ts"
+compatibility_date = "2025-11-14"
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+
+[observability.traces]
+enabled = true
+
+# In-memory KV for local dev; replace with real namespaces in Cloudflare before staging.
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "00000000000000000000000000000001"
+preview_id = "00000000000000000000000000000001"
+
+[[kv_namespaces]]
+binding = "MCP_OPS"
+id = "00000000000000000000000000000002"
+preview_id = "00000000000000000000000000000002"
+
+[vars]
+ENVIRONMENT = "local"
+MOCK_MODE = "1"
+RESOURCE_URL = "http://127.0.0.1:8787/mcp"
+ISSUER_URL = "http://127.0.0.1:8787"
+WEB_APP_ORIGIN = "http://127.0.0.1:3000"
+
+[env.staging]
+name = "auctus-mcp-staging"
+vars = { ENVIRONMENT = "staging", MOCK_MODE = "0", RESOURCE_URL = "https://mcp-staging.auctus.academy/mcp", ISSUER_URL = "https://auth.mcp-staging.auctus.academy", WEB_APP_ORIGIN = "https://auctus.academy" }
+
+[[env.staging.kv_namespaces]]
+binding = "OAUTH_KV"
+id = "REPLACE_WITH_STAGING_OAUTH_KV_ID"
+
+[[env.staging.kv_namespaces]]
+binding = "MCP_OPS"
+id = "REPLACE_WITH_STAGING_MCP_OPS_KV_ID"
+
+[env.production]
+name = "auctus-mcp"
+vars = { ENVIRONMENT = "production", MOCK_MODE = "0", RESOURCE_URL = "https://mcp.auctus.academy/mcp", ISSUER_URL = "https://auth.mcp.auctus.academy", WEB_APP_ORIGIN = "https://auctus.academy" }
+
+[[env.production.kv_namespaces]]
+binding = "OAUTH_KV"
+id = "REPLACE_WITH_PROD_OAUTH_KV_ID"
+
+[[env.production.kv_namespaces]]
+binding = "MCP_OPS"
+id = "REPLACE_WITH_PROD_MCP_OPS_KV_ID"
