@@ -12,6 +12,8 @@ export type PubmedSearchFilters = {
   min_date?: string;
   max_date?: string;
   publication_types?: string[];
+  /** "pub_date" = newest first (e.g. latest systematic review). Default relevance. */
+  sort?: "relevance" | "pub_date";
 };
 
 export type PubmedSearchResult = {
@@ -70,6 +72,7 @@ export async function esearchPubmed(
     const pt = filters.publication_types.map((p) => `"${p.replace(/"/g, "")}"[pt]`).join(" OR ");
     params.term = `(${query}) AND (${pt})`;
   }
+  if (filters?.sort === "pub_date") params.sort = "pub_date";
 
   const body = await ncbiGet("/entrez/eutils/esearch.fcgi", params, creds);
   const data = parseJsonSafe<{
@@ -188,4 +191,105 @@ export async function meshLookup(creds: NcbiCredentials, term: string, retmax: n
       tree_numbers: row && typeof row !== "string" ? row.tree : undefined,
     };
   });
+}
+/** Publication types counted as reviews (mirrors auctus-academy idea-board REVIEW_PUB_TYPES). */
+export const REVIEW_PUB_TYPES = new Set(
+  [
+    "Systematic Review",
+    "Meta-Analysis",
+    "Network Meta-Analysis",
+    "Review",
+    "Guideline",
+    "Practice Guideline",
+    "Scoping Review",
+  ].map((t) => t.toLowerCase()),
+);
+
+export function isReviewPubTypes(pubTypes: string[]): boolean {
+  return pubTypes.some((t) => REVIEW_PUB_TYPES.has(t.trim().toLowerCase()));
+}
+
+/** esummary `sortpubdate` ("2025/11/03 00:00") to ISO date, else null. */
+export function isoFromSortPubDate(value: unknown): string | null {
+  const match = typeof value === "string" ? value.match(/^(\d{4})\/(\d{2})\/(\d{2})/) : null;
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
+}
+
+export type PmidVerification = {
+  pmid: string;
+  /** False when PubMed has no record: the PMID may be invented by the model. */
+  found: boolean;
+  title: ReturnType<typeof wrapUntrustedText> | null;
+  journal: string | null;
+  pub_date_iso: string | null;
+  publication_types: string[];
+  is_review: boolean;
+};
+
+/** Parses an esummary JSON body into one verification row per requested PMID. */
+export function parseVerifyEsummary(body: unknown, requested: string[]): PmidVerification[] {
+  const result = (body as { result?: Record<string, unknown> } | null)?.result ?? {};
+  return requested.map((pmid) => {
+    const doc = result[pmid] as (ESummaryDoc & { error?: unknown; sortpubdate?: string; source?: string }) | undefined;
+    const title = typeof doc?.title === "string" ? stripXml(doc.title) : "";
+    if (!doc || typeof doc !== "object" || doc.error || !title) {
+      return { pmid, found: false, title: null, journal: null, pub_date_iso: null, publication_types: [], is_review: false };
+    }
+    const pubTypes = Array.isArray(doc.pubtype) ? doc.pubtype.map(String).slice(0, 30) : [];
+    return {
+      pmid,
+      found: true,
+      title: wrapUntrustedText(title, PUBMED_TITLE_MAX_CHARS),
+      journal: String(doc.fulljournalname || doc.source || "").slice(0, 300) || null,
+      pub_date_iso: isoFromSortPubDate(doc.sortpubdate),
+      publication_types: pubTypes,
+      is_review: isReviewPubTypes(pubTypes),
+    };
+  });
+}
+
+export async function verifyPmids(creds: NcbiCredentials, pmids: string[]): Promise<PmidVerification[]> {
+  if (!pmids.length) return [];
+  const body = await ncbiGet(
+    "/entrez/eutils/esummary.fcgi",
+    { db: "pubmed", id: pmids.join(","), retmode: "json" },
+    creds,
+  );
+  return parseVerifyEsummary(parseJsonSafe<unknown>(body), pmids);
+}
+
+export type PubmedRelation = "similar" | "cited_by" | "references";
+
+export const RELATION_LINKNAME: Record<PubmedRelation, string> = {
+  similar: "pubmed_pubmed",
+  cited_by: "pubmed_pubmed_citedin",
+  references: "pubmed_pubmed_refs",
+};
+
+export type RelatedResult = { pmid: string; relation: PubmedRelation; total: number; pmids: string[]; capped: boolean };
+
+/** Parses an elink JSON body; only links under the requested linkname are returned. */
+export function parseElink(body: unknown, linkname: string): string[] {
+  const linksets = (body as { linksets?: { linksetdbs?: { linkname?: string; links?: unknown[] }[] }[] } | null)
+    ?.linksets;
+  const db = linksets?.[0]?.linksetdbs?.find((d) => d.linkname === linkname);
+  return (db?.links ?? []).map(String).filter((id) => /^\d{1,9}$/.test(id));
+}
+
+export async function elinkPubmed(
+  creds: NcbiCredentials,
+  pmid: string,
+  relation: PubmedRelation,
+  max: number,
+): Promise<RelatedResult> {
+  const linkname = RELATION_LINKNAME[relation];
+  const body = await ncbiGet(
+    "/entrez/eutils/elink.fcgi",
+    { dbfrom: "pubmed", db: "pubmed", id: pmid, linkname, retmode: "json" },
+    creds,
+  );
+  // NCBI lists the source PMID itself first for "similar"; drop it.
+  const all = parseElink(parseJsonSafe<unknown>(body), linkname).filter((id) => id !== pmid);
+  const pmids = all.slice(0, max);
+  return { pmid, relation, total: all.length, pmids, capped: all.length > pmids.length };
 }

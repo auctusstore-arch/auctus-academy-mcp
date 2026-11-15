@@ -22,4 +22,9 @@ export const PUBMED_TOOL_NAMES = new Set([
   "auctus_pubmed_search",
   "auctus_pubmed_get_articles",
   "auctus_pubmed_mesh_lookup",
+  "auctus_pubmed_verify_pmids",
+  "auctus_pubmed_find_related",
 ]);
+
+export const PUBMED_VERIFY_MAX_PMIDS = 50;
+export const PUBMED_RELATED_MAX_RESULTS = 25;

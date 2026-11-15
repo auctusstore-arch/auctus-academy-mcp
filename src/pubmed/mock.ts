@@ -1,5 +1,5 @@
 import { wrapUntrustedText } from "../security/untrusted";
-import type { MeshLookupHit, PubmedArticle, PubmedSearchResult } from "./eutils";
+import type { MeshLookupHit, PmidVerification, PubmedArticle, PubmedRelation, PubmedSearchResult, RelatedResult } from "./eutils";
 import { createHash } from "../lib/hash";
 
 const FIXTURE_PMIDS = ["12345678", "23456789", "34567890"];
@@ -39,4 +39,29 @@ export function mockMeshLookup(term: string): MeshLookupHit[] {
       tree_numbers: ["A01.111"],
     },
   ];
+}
+/** Fixture: 99999999 is "invented" (not on PubMed); 34567890 is a systematic review. */
+export function mockVerifyPmids(pmids: string[]): PmidVerification[] {
+  return pmids.map((pmid) => {
+    if (pmid === "99999999") {
+      return { pmid, found: false, title: null, journal: null, pub_date_iso: null, publication_types: [], is_review: false };
+    }
+    const isReview = pmid === "34567890";
+    const types = isReview ? ["Journal Article", "Systematic Review"] : ["Journal Article", "Randomized Controlled Trial"];
+    return {
+      pmid,
+      found: true,
+      title: wrapUntrustedText(`Mock title for PMID ${pmid}`),
+      journal: "Mock Journal",
+      pub_date_iso: "2024-01-15",
+      publication_types: types,
+      is_review: isReview,
+    };
+  });
+}
+
+export function mockFindRelated(pmid: string, relation: PubmedRelation, max: number): RelatedResult {
+  const all = FIXTURE_PMIDS.filter((id) => id !== pmid);
+  const pmids = all.slice(0, max);
+  return { pmid, relation, total: all.length, pmids, capped: all.length > pmids.length };
 }
