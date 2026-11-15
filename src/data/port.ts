@@ -15,12 +15,16 @@ import {
   mockWhoami,
 } from "./mock-store";
 
+import type { AuditEventInput } from "../audit/logger";
+
 export type ToolContext = {
   userId: string;
   scopes: string[];
   clientId: string;
   env: Env;
   upstreamAccessToken?: string;
+  /** Optional per-tool audit hook (PubMed redacted args). */
+  auditTool?: (partial: Pick<AuditEventInput, "tool" | "argsHash" | "status" | "recordCount">) => Promise<void>;
 };
 
 async function assertProject(ctx: ToolContext, projectId: string): Promise<void> {

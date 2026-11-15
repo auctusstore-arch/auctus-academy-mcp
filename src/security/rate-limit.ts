@@ -1,4 +1,8 @@
-import { DCR_RATE_LIMIT_PER_HOUR, READ_RATE_LIMIT_PER_MINUTE } from "../config";
+import {
+  DCR_RATE_LIMIT_PER_HOUR,
+  READ_RATE_LIMIT_PER_MINUTE,
+} from "../config";
+import { NCBI_GLOBAL_RATE_PER_SECOND, PUBMED_USER_RATE_PER_MINUTE } from "../pubmed/constants";
 
 type Bucket = { count: number; resetAt: number };
 
@@ -28,4 +32,19 @@ export async function checkReadRateLimit(
 export async function checkDcrRateLimit(kv: KVNamespace, ip: string): Promise<{ allowed: boolean; retryAfterSec?: number }> {
   const key = `rl:dcr:${ip}`;
   return bump(kv, key, DCR_RATE_LIMIT_PER_HOUR, 3_600_000);
+}
+
+export async function checkPubMedUserRateLimit(
+  kv: KVNamespace,
+  userId: string,
+  clientId: string,
+): Promise<{ allowed: boolean; retryAfterSec?: number }> {
+  const key = `rl:pubmed:${userId}:${clientId}`;
+  return bump(kv, key, PUBMED_USER_RATE_PER_MINUTE, 60_000);
+}
+
+/** Global NCBI bucket (10 req/s with API key) — best-effort via KV, shared across isolates. */
+export async function checkNcbiGlobalRateLimit(kv: KVNamespace): Promise<{ allowed: boolean; retryAfterSec?: number }> {
+  const key = "rl:ncbi:global";
+  return bump(kv, key, NCBI_GLOBAL_RATE_PER_SECOND, 1000);
 }

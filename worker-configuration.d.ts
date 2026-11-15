@@ -13,5 +13,8 @@ interface Env {
   SUPABASE_OAUTH_CLIENT_SECRET?: string;
   SUPABASE_OAUTH_REDIRECT_URI?: string;
   TOKEN_ENCRYPTION_SECRET?: string;
+  NCBI_API_KEY?: string;
+  NCBI_TOOL?: string;
+  NCBI_EMAIL?: string;
   OAUTH_PROVIDER: import("@cloudflare/workers-oauth-provider").OAuthHelpers;
 }

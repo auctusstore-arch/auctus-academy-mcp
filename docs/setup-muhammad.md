@@ -22,8 +22,18 @@ Urutan disarankan sebelum `wrangler deploy --env staging` (deploy **tidak** diot
 | `SUPABASE_OAUTH_CLIENT_ID` | Confidential client `auctus-mcp-gateway` di Supabase Auth OAuth 2.1 |
 | `SUPABASE_OAUTH_CLIENT_SECRET` | Secret client tersebut |
 | `SUPABASE_OAUTH_REDIRECT_URI` | Callback Worker `/consent/upstream-callback` |
+| `NCBI_API_KEY` | API key NCBI E-utilities (wajib staging/prod untuk 10 req/s global) |
+| `NCBI_TOOL` | Identitas tool NCBI, mis. `auctus-mcp` |
+| `NCBI_EMAIL` | Kontak NCBI (wajib sebelum `MOCK_MODE=0`) |
 
 Salin pola dari `.dev.vars.example`. **Jangan** commit nilai asli.
+
+### PubMed (Fase 0)
+
+- Panggilan langsung ke `https://eutils.ncbi.nlm.nih.gov` (tanpa proxy MCP pihak ketiga).
+- Rate limit: 30 panggilan PubMed/menit per user+client (KV) **dan** 10 req/detik global NCBI (KV).
+- Audit: hash + panjang query; PMID count pada `get_articles` — **tidak** menyimpan teks query penuh di rantai audit.
+- Lokal: `MOCK_MODE=1` memakai fixture tanpa jaringan.
 
 ## 3. Supabase (staging only)
 

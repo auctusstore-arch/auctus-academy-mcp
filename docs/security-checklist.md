@@ -15,7 +15,10 @@ Legenda: ✅ lulus scaffold / tes | ⚠️ sebagian / stub | ❌ belum | 🔜 bu
 | RLS gateway `auctus-mcp-gateway` | 🔜 migrasi di repo academy |
 | Lintas tenant CI | ✅ `tests/cross-tenant.test.ts` |
 | untrusted_content + batas ukuran | ✅ |
-| Anotasi tool jujur | ✅ `catalog.ts` |
+| Anotasi tool jujur (`readOnlyHint`, `openWorldHint` PubMed) | ✅ `catalog.ts` |
+| PubMed native E-utilities (bukan proxy MCP) | ✅ `src/pubmed/` |
+| Audit PubMed tanpa query plaintext | ✅ `pubmed/audit-args.ts` |
+| Rencana impor PubMed → Saring | 📄 `docs/pubmed-phase1-plan.md` |
 | W2 / approval | N/A Fase 0 |
 | Audit append-only + hash chain | ⚠️ tes unit; Postgres TODO |
 | Rate limit | ✅ read path |

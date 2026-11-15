@@ -6,6 +6,7 @@ export type ToolDef = {
   readOnlyHint: boolean;
   destructiveHint: boolean;
   idempotentHint: boolean;
+  openWorldHint?: boolean;
 };
 
 export const PHASE0_TOOLS: ToolDef[] = [
@@ -22,6 +23,30 @@ export const PHASE0_TOOLS: ToolDef[] = [
   { name: "auctus_ma_check_ready", description: "Read-only readiness validation for MA run.", readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   { name: "auctus_ma_list_jobs", description: "Job status summaries (no file URLs).", readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   { name: "auctus_ma_get_job", description: "Single job summary (no file URLs).", readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  {
+    name: "auctus_pubmed_search",
+    description: "Search PubMed via NCBI E-utilities; PMIDs only (no abstracts).",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  {
+    name: "auctus_pubmed_get_articles",
+    description: "Fetch PubMed article metadata/abstracts (untrusted third-party text).",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  {
+    name: "auctus_pubmed_mesh_lookup",
+    description: "Look up MeSH headings via NCBI MeSH database.",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
 ];
 
 export async function catalogSha256(): Promise<string> {

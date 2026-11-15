@@ -5,7 +5,7 @@ Server MCP resmi Auctus untuk workspace SR-MA. Prioritas desain: **1. keamanan, 
 ## Apa yang ada di repo ini
 
 - Worker Cloudflare (`src/`) dengan OAuth 2.1 + MCP Streamable HTTP pada `/mcp`
-- Tool read-only Fase 0 (`sr.read`) dengan prefiks `auctus_`
+- Tool read-only Fase 0 (`sr.read`) dengan prefiks `auctus_` (termasuk PubMed/MeSH via NCBI E-utilities)
 - Halaman consent (mock lokal) dan redirect ke web Auctus (staging/prod)
 - Rate limit, kill switch, allowlist pilot (KV `MCP_OPS`)
 - Migrasi SQL **usulan** schema `mcp.*` (belum diterapkan ke Supabase mana pun)
@@ -27,7 +27,8 @@ Tanpa secret produksi. Data tool memakai mock in-memory (`src/data/mock-store.ts
 |--------|-----|
 | [threat-model.md](./threat-model.md) | Pemetaan T1–T19 PRD |
 | [security-checklist.md](./security-checklist.md) | Status checklist §11 |
-| [setup-muhammad.md](./setup-muhammad.md) | Langkah staging deploy |
+| [setup-muhammad.md](./setup-muhammad.md) | Langkah staging deploy (+ secret NCBI) |
+| [pubmed-phase1-plan.md](./pubmed-phase1-plan.md) | Rencana impor PubMed → Saring (dokumen saja) |
 | [keputusan-dan-pertanyaan.md](./keputusan-dan-pertanyaan.md) | Keputusan terbuka untuk Muhammad |
 
 ## Lingkungan Wrangler

@@ -5,6 +5,9 @@ import { resolveEntitlement, scopeIncludes } from "../entitlement";
 import type { ToolContext } from "../data/port";
 import * as port from "../data/port";
 import { PHASE0_TOOLS } from "./catalog";
+import { pubmedAuditArgsHash } from "../pubmed/audit-args";
+import { capJsonResponse } from "../pubmed/response-cap";
+import * as pubmed from "../pubmed/service";
 
 const uuid = z.string().uuid();
 
@@ -152,6 +155,59 @@ export function createMcpServer(getContext: () => ToolContext): McpServer {
     async (args, _extra) => runTool(getContext, async (ctx) => port.toolMaGetJob(ctx, args.job_id)),
   );
 
+  const pubmedAnnotations = {
+    readOnlyHint: true as const,
+    destructiveHint: false as const,
+    idempotentHint: false as const,
+    openWorldHint: true as const,
+  };
+
+  server.registerTool(
+    "auctus_pubmed_search",
+    {
+      description: "Search PubMed (NCBI E-utilities). Returns PMIDs; query text is third-party.",
+      inputSchema: z.object({
+        query: z.string().min(1).max(500),
+        max_results: z.number().int().min(1).max(25).optional(),
+        min_date: z.string().regex(/^\d{4}(\/\d{2}(\/\d{2})?)?$/).optional(),
+        max_date: z.string().regex(/^\d{4}(\/\d{2}(\/\d{2})?)?$/).optional(),
+        publication_types: z.array(z.string().max(80)).max(5).optional(),
+      }),
+      annotations: { ...pubmedAnnotations, idempotentHint: false },
+    },
+    async (args, _extra) =>
+      runPubMedTool(getContext, "auctus_pubmed_search", args, async (ctx) => pubmed.toolPubmedSearch(ctx, args)),
+  );
+
+  server.registerTool(
+    "auctus_pubmed_get_articles",
+    {
+      description: "Batch-fetch PubMed articles; title/abstract in untrusted_content.",
+      inputSchema: z.object({
+        pmids: z.array(z.string().regex(/^\d+$/)).min(1).max(20),
+      }),
+      annotations: { ...pubmedAnnotations, idempotentHint: true },
+    },
+    async (args, _extra) =>
+      runPubMedTool(getContext, "auctus_pubmed_get_articles", args, async (ctx) =>
+        pubmed.toolPubmedGetArticles(ctx, args.pmids),
+      ),
+  );
+
+  server.registerTool(
+    "auctus_pubmed_mesh_lookup",
+    {
+      description: "MeSH term lookup via NCBI (open-world third-party labels).",
+      inputSchema: z.object({
+        term: z.string().min(1).max(200),
+        max_results: z.number().int().min(1).max(15).optional(),
+      }),
+      annotations: { ...pubmedAnnotations, idempotentHint: true },
+    },
+    async (args, _extra) =>
+      runPubMedTool(getContext, "auctus_pubmed_mesh_lookup", args, async (ctx) => pubmed.toolPubmedMeshLookup(ctx, args)),
+  );
+
   return server;
 }
 
@@ -170,4 +226,41 @@ async function runTool<T>(getContext: () => ToolContext, fn: (ctx: ToolContext) 
   if (!ent.allowed) throw new Error("plan_denied");
   const result = await fn(ctx);
   return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+}
+
+async function runPubMedTool<T>(
+  getContext: () => ToolContext,
+  toolName: string,
+  rawArgs: Record<string, unknown>,
+  fn: (ctx: ToolContext) => Promise<T>,
+) {
+  const auditMeta = await pubmedAuditArgsHash(toolName, rawArgs);
+  try {
+    const out = await runTool(getContext, fn);
+    await getContext().auditTool?.({
+      tool: toolName,
+      argsHash: auditMeta.argsHash,
+      status: "ok",
+      recordCount: auditMeta.recordCount,
+    });
+    const text = out.content[0]?.type === "text" ? out.content[0].text : JSON.stringify(out);
+    const parsed = JSON.parse(text) as unknown;
+    const capped = capJsonResponse(parsed);
+    return { content: [{ type: "text" as const, text: capped.body }] };
+  } catch (e) {
+    await getContext().auditTool?.({
+      tool: toolName,
+      argsHash: auditMeta.argsHash,
+      status: "error",
+      recordCount: auditMeta.recordCount,
+    });
+    const safe =
+      e instanceof Error &&
+      ["rate_limited", "invalid_input", "pubmed_unavailable", "plan_denied", "insufficient_scope", "unauthorized"].includes(
+        e.message,
+      )
+        ? e.message
+        : "pubmed_unavailable";
+    throw new Error(safe);
+  }
 }

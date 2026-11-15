@@ -6,6 +6,7 @@ import { checkReadRateLimit } from "../security/rate-limit";
 import { hashToolArgs, AuditLogSink } from "../audit/logger";
 import type { ToolContext } from "../data/port";
 import { createMcpServer } from "./register-tools";
+import { PUBMED_TOOL_NAMES } from "../pubmed/constants";
 
 type AuthProps = {
   userId: string;
@@ -48,12 +49,27 @@ export async function handleMcpRequest(
     return new Response("rate_limited", { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } });
   }
 
+  const scopeStr = (ctx.auth.scope ?? []).join(" ");
+
   const getContext = (): ToolContext => ({
     userId,
     scopes: ctx.auth.scope ?? [],
     clientId,
     env,
     upstreamAccessToken: ctx.props.upstreamAccessToken,
+    auditTool: async (partial) => {
+      await auditFor(userId).append({
+        userId,
+        clientId,
+        grantId: ctx.auth.token,
+        tool: partial.tool,
+        scope: scopeStr,
+        argsHash: partial.argsHash,
+        status: partial.status,
+        recordCount: partial.recordCount,
+        userAgent: request.headers.get("User-Agent") ?? undefined,
+      });
+    },
   });
 
   const mcpServer = createMcpServer(getContext);
@@ -64,17 +80,20 @@ export async function handleMcpRequest(
 
   const response = await transport.handleRequest(request);
 
-  const argsHash = await hashToolArgs({ tool: toolName, mcp_method: request.headers.get("Mcp-Method") });
-  await auditFor(userId).append({
-    userId,
-    clientId,
-    grantId: ctx.auth.token,
-    tool: toolName,
-    scope: (ctx.auth.scope ?? []).join(" "),
-    argsHash,
-    status: response.ok ? "ok" : "error",
-    userAgent: request.headers.get("User-Agent") ?? undefined,
-  });
+  // PubMed tools emit redacted audit rows from register-tools (query hash only).
+  if (!PUBMED_TOOL_NAMES.has(toolName)) {
+    const argsHash = await hashToolArgs({ tool: toolName, mcp_method: request.headers.get("Mcp-Method") });
+    await auditFor(userId).append({
+      userId,
+      clientId,
+      grantId: ctx.auth.token,
+      tool: toolName,
+      scope: scopeStr,
+      argsHash,
+      status: response.ok ? "ok" : "error",
+      userAgent: request.headers.get("User-Agent") ?? undefined,
+    });
+  }
 
   return response;
 }
