@@ -5,7 +5,7 @@ import type { WhoamiRow } from "../data/port";
 import { resolveEntitlementFromWhoami } from "../entitlement";
 import { catalogWellKnownJson } from "../mcp/catalog";
 import { handleConnectionsApi } from "./connections-api";
-import { renderConsentPage, renderPlanDeniedPage, renderErrorPage } from "./consent-page";
+import { formActionSources, renderConsentPage, renderPlanDeniedPage, renderErrorPage } from "./consent-page";
 import {
   buildUpstreamAuthorizeUrl,
   createPkcePair,
@@ -47,7 +47,9 @@ async function handleAuthorize(request: Request, env: Env): Promise<Response> {
       const parsed = await oauth.parseAuthRequest(request);
       const details = await oauth.describeConsent(parsed);
       const consent = await oauth.beginConsent(parsed);
-      return new Response(renderConsentPage(details, consent.handle), { headers: htmlHeaders(consent.headers) });
+      // Approve goes Worker -> Supabase authorize -> academy /oauth/consent; deny goes to the client.
+      const targets = formActionSources([parsed.redirectUri, ...(isMockMode(env) ? [] : [env.SUPABASE_URL, env.WEB_APP_ORIGIN])]);
+      return new Response(renderConsentPage(details, consent.handle, targets), { headers: htmlHeaders(consent.headers) });
     }
     if (request.method === "POST") {
       const form = await request.formData();
@@ -140,6 +142,8 @@ function redirectWithHeaders(location: string, base: Headers): Response {
 }
 
 function authorizeFailure(e: unknown): Response {
+  // Internal reason only (error class and code), never tokens or upstream bodies.
+  console.error("authorize_failure", e instanceof Error ? `${e.name}:${(e as { code?: string }).code ?? e.message}` : "unknown");
   // Never echo upstream or library internals to the browser.
   if (e instanceof AuthorizationError) {
     return new Response(renderErrorPage("Permintaan izin kedaluwarsa atau tidak valid. Mulai lagi dari aplikasi AI Anda."), {

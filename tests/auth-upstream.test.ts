@@ -122,3 +122,33 @@ describe("vendored dedup engine", () => {
     }
   });
 });
+
+describe("upstream URL policy", async () => {
+  const { isAllowedSupabaseUrl } = await import("../src/auth/upstream");
+  it("allows https and loopback http only", () => {
+    expect(isAllowedSupabaseUrl("https://x.supabase.co")).toBe(true);
+    expect(isAllowedSupabaseUrl("http://127.0.0.1:54321")).toBe(true);
+    expect(isAllowedSupabaseUrl("http://x.supabase.co")).toBe(false);
+    expect(isAllowedSupabaseUrl("not a url")).toBe(false);
+  });
+});
+
+describe("consent page CSP", async () => {
+  const { formActionSources, renderConsentPage } = await import("../src/auth/consent-page");
+  it("allows exactly the redirect chain origins (Chrome applies form-action to redirects)", () => {
+    expect(formActionSources(["http://127.0.0.1:9999/callback", "https://x.supabase.co", "https://auctus.academy", undefined, "nope"])).toEqual([
+      "http://127.0.0.1:9999",
+      "https://x.supabase.co",
+      "https://auctus.academy",
+    ]);
+    expect(formActionSources(["cursor://anysphere.cursor-deeplink/mcp/cb"])).toEqual(["cursor:"]);
+    const html = renderConsentPage(
+      { clientName: "<b>x</b>", clientDomain: undefined, redirectHost: "127.0.0.1", redirectIsLoopback: true, scope: ["sr.read", "evil.scope"] } as never,
+      "h",
+      ["https://x.supabase.co"],
+    );
+    expect(html).toContain("form-action 'self' https://x.supabase.co;");
+    expect(html).not.toContain("<b>x</b>");
+    expect(html).not.toContain("evil.scope");
+  });
+});

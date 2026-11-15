@@ -41,7 +41,7 @@ export function upstreamConfigFromEnv(env: Env): UpstreamConfig {
   const clientSecret = env.SUPABASE_OAUTH_CLIENT_SECRET;
   const redirectUri = env.SUPABASE_OAUTH_REDIRECT_URI;
   if (!supabaseUrl || !clientId || !clientSecret || !redirectUri) throw new UpstreamError("upstream_not_configured");
-  if (!/^https:\/\//.test(supabaseUrl)) throw new UpstreamError("upstream_not_configured");
+  if (!isAllowedSupabaseUrl(supabaseUrl)) throw new UpstreamError("upstream_not_configured");
   return { supabaseUrl, clientId, clientSecret, redirectUri };
 }
 
@@ -156,4 +156,15 @@ export async function fetchUpstreamUser(
 
 export function upstreamNeedsRefresh(tokens: UpstreamTokens, nowSeconds = Math.floor(Date.now() / 1000)): boolean {
   return tokens.expires_at - nowSeconds <= UPSTREAM_REFRESH_SKEW_SECONDS;
+}
+
+/** HTTPS only, except a loopback Supabase for local development. */
+export function isAllowedSupabaseUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "https:") return true;
+    return url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost");
+  } catch {
+    return false;
+  }
 }
