@@ -1,10 +1,23 @@
 export const MCP_SCOPES = {
   SR_READ: "sr.read",
+  SARING_WRITE: "saring.write",
+  MA_WRITE: "ma.write",
+  MA_RUN: "ma.run",
+  DEDUP_RUN: "dedup.run",
   OFFLINE: "offline_access",
 } as const;
 
+export type McpScope = (typeof MCP_SCOPES)[keyof typeof MCP_SCOPES];
+
+/** Every scope the AS supports. Clients start with sr.read and step up (PRD §6). */
+export const MCP_SCOPE_LIST: readonly McpScope[] = Object.values(MCP_SCOPES);
+
 export const SCOPE_LABELS_ID: Record<string, string> = {
   "sr.read": "Melihat proyek Saring, MA, RoB, GRADE, dan status job milikmu",
+  "saring.write": "Mengusulkan atau mengubah keputusan dan catatan screening (bulk butuh persetujuanmu di web Auctus)",
+  "ma.write": "Mengisi studi, data ekstraksi, RoB, dan GRADE (bisa dibatalkan)",
+  "ma.run": "Meminta analisis MA dijalankan (memakai kuota, selalu butuh persetujuanmu di web Auctus)",
+  "dedup.run": "Menganalisis duplikat dan menyiapkan usulan (finalisasi hanya di web Auctus)",
   offline_access: "Tetap terhubung tanpa login ulang (maks 30 hari)",
 };
 
@@ -21,6 +34,7 @@ export const DCR_REDIRECT_HOST_ALLOWLIST = new Set([
 ]);
 
 export const READ_RATE_LIMIT_PER_MINUTE = 60;
+export const WRITE_RATE_LIMIT_PER_MINUTE = 10;
 export const DCR_RATE_LIMIT_PER_HOUR = 10;
 export const MAX_TOOL_PAGE_SIZE = 50;
 export const MAX_RESPONSE_BYTES = 100_000;

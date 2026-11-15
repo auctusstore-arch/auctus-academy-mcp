@@ -29,3 +29,17 @@ export function resolveEntitlement(input: EntitlementInput): EntitlementResult {
 export function scopeIncludes(required: string, granted: readonly string[]): boolean {
   return granted.includes(required);
 }
+/** The database decides (mcp.entitlement); the Worker only reads the verdict. Fails closed. */
+export function resolveEntitlementFromWhoami(
+  who: { entitlement?: { allowed?: unknown; basis?: unknown; tier?: unknown } } | null | undefined,
+): EntitlementResult {
+  const ent = who?.entitlement;
+  if (!ent || ent.allowed !== true) {
+    return { allowed: false, reason: ent?.tier === "free" || ent?.tier == null ? "free" : "mcp_not_entitled" };
+  }
+  const basis = ent.basis;
+  if (basis !== "complete" && basis !== "coaching_enrollment" && basis !== "coaching_assignment") {
+    return { allowed: false, reason: "mcp_not_entitled" };
+  }
+  return { allowed: true, basis, tier: typeof ent.tier === "string" ? ent.tier : null };
+}

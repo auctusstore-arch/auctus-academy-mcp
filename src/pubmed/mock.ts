@@ -56,6 +56,8 @@ export function mockVerifyPmids(pmids: string[]): PmidVerification[] {
       pub_date_iso: "2024-01-15",
       publication_types: types,
       is_review: isReview,
+      authors: ["Mock A"],
+      doi: null,
     };
   });
 }

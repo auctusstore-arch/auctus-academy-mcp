@@ -22,6 +22,8 @@ function mockCtx(): ToolContext {
     scopes: ["sr.read"],
     clientId: "test-client",
     env: { MOCK_MODE: "1", MCP_OPS: kv } as Env,
+    rpc: async () => { throw new Error("unused"); },
+    client: { id: "test-client" },
   };
 }
 

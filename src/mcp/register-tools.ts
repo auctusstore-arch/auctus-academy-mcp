@@ -1,299 +1,116 @@
-import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { MCP_SCOPES, SERVER_INSTRUCTIONS } from "../config";
-import { resolveEntitlement, scopeIncludes } from "../entitlement";
-import type { ToolContext } from "../data/port";
-import * as port from "../data/port";
-import { PHASE0_TOOLS } from "./catalog";
+import { MAX_RESPONSE_BYTES, SERVER_INSTRUCTIONS } from "../config";
+import type { ToolContext, WhoamiRow } from "../data/port";
+import { SupabaseRpcError } from "../data/supabase";
+import { resolveEntitlementFromWhoami } from "../entitlement";
+import { createHash } from "../lib/hash";
 import { pubmedAuditArgsHash } from "../pubmed/audit-args";
-import { capJsonResponse } from "../pubmed/response-cap";
-import * as pubmed from "../pubmed/service";
+import { checkWriteRateLimit } from "../security/rate-limit";
+import { registerResourcesAndPrompts } from "./resources";
+import { TOOLS, type ToolSpec } from "./tools";
 
-const uuid = z.string().uuid();
+export const SERVER_VERSION = "0.2.0";
+
+/** Codes the model may see, with an actionable Indonesian hint (PRD §12). */
+export const ERROR_HINTS: Record<string, string> = {
+  unauthorized: "Sesi tidak valid. Minta user menyambungkan ulang Auctus.",
+  plan_denied: "Paket user tidak mendukung fitur ini (Free tidak mendapat MCP).",
+  insufficient_scope: "Izin belum diberikan. Minta user menyambungkan ulang Auctus dan mencentang izin yang dibutuhkan.",
+  not_found: "Data tidak ditemukan atau bukan milik user.",
+  forbidden: "Tidak diizinkan untuk user ini.",
+  invalid_input: "Input tidak valid.",
+  rate_limited: "Terlalu banyak permintaan. Tunggu sebentar.",
+  approval_rate_limited: "Terlalu banyak permintaan persetujuan dalam satu jam.",
+  collaborator_mcp_disabled: "Pemilik proyek belum mengizinkan kolaborator memakai AI (MCP) di proyek ini.",
+  project_not_ready: "Proyek masih diunggah.",
+  revert_conflict: "Data sudah berubah setelah perubahan ini, jadi tidak bisa dibatalkan otomatis. Minta user memeriksa di web.",
+  not_revertible: "Perubahan ini tidak bisa dibatalkan lewat MCP.",
+  web_only: "Aksi ini hanya bisa dilakukan user di web Auctus.",
+  job_not_done: "Job belum selesai.",
+  response_too_large: "Hasil terlalu besar. Pakai limit lebih kecil atau filter.",
+  pubmed_unavailable: "PubMed sedang tidak bisa dihubungi.",
+  corpus_unavailable: "Korpus proyek tidak bisa dibaca saat ini.",
+  upstream_unavailable: "Layanan Auctus sedang bermasalah. Coba lagi nanti.",
+  too_many_records: "Terlalu banyak record untuk dianalisis.",
+};
+
+/** Turns any thrown error into a safe code. Unknown errors never leak details. */
+export function safeErrorCode(e: unknown): string {
+  if (e instanceof SupabaseRpcError) {
+    return ERROR_HINTS[e.code] || /^ma_[a-z_]{2,60}$/.test(e.code) || /^saring_[a-z_]{2,60}$/.test(e.code) ? e.code : "upstream_error";
+  }
+  if (e instanceof Error && (ERROR_HINTS[e.message] || /^ma_[a-z_]{2,60}$/.test(e.message))) return e.message;
+  return "internal_error";
+}
+
+function errorResult(code: string, extra?: Record<string, unknown>) {
+  return {
+    isError: true,
+    content: [{ type: "text" as const, text: JSON.stringify({ error: code, message: ERROR_HINTS[code] ?? code, ...extra }) }],
+  };
+}
+
+export async function argsHashFor(spec: ToolSpec, args: Record<string, unknown>) {
+  if (spec.pubmed) return pubmedAuditArgsHash(spec.name, args);
+  return { argsHash: await createHash(JSON.stringify({ tool: spec.name, args })), recordCount: undefined };
+}
+
+export async function runSpec(spec: ToolSpec, ctx: ToolContext, args: Record<string, unknown>, whoami: () => Promise<WhoamiRow>) {
+  const missing = spec.scopes.filter((s) => !ctx.scopes.includes(s));
+  const audit = await argsHashFor(spec, args);
+  const log = (status: "ok" | "denied" | "error") =>
+    ctx.auditTool?.({ tool: spec.name, argsHash: audit.argsHash, status, recordCount: audit.recordCount }).catch(() => undefined);
+
+  if (missing.length) {
+    await log("denied");
+    return errorResult("insufficient_scope", { required_scopes: missing });
+  }
+  try {
+    const who = await whoami();
+    const ent = resolveEntitlementFromWhoami(who);
+    if (!ent.allowed || (spec.dedupTier && !who.entitlement.dedup_eligible)) {
+      await log("denied");
+      return errorResult("plan_denied");
+    }
+    if (spec.level !== "read") {
+      const rl = await checkWriteRateLimit(ctx.env.MCP_OPS, ctx.userId, ctx.clientId);
+      if (!rl.allowed) {
+        await log("denied");
+        return errorResult("rate_limited", { retry_after_seconds: rl.retryAfterSec });
+      }
+    }
+    const result = await spec.run(ctx, args);
+    const text = JSON.stringify(result ?? null, null, 2);
+    if (text.length > MAX_RESPONSE_BYTES) {
+      await log("error");
+      return errorResult("response_too_large");
+    }
+    // Successful writes are audited inside the same database transaction.
+    if (spec.level === "read") await log("ok");
+    return { content: [{ type: "text" as const, text }] };
+  } catch (e) {
+    await log("error");
+    return errorResult(safeErrorCode(e));
+  }
+}
 
 export function createMcpServer(getContext: () => ToolContext): McpServer {
   const server = new McpServer(
-    { name: "auctus-mcp", version: "0.0.1-phase0" },
-    { instructions: SERVER_INSTRUCTIONS, maxToolInputElements: 256 },
+    { name: "auctus-mcp", version: SERVER_VERSION },
+    { instructions: SERVER_INSTRUCTIONS, capabilities: { tools: {}, resources: {}, prompts: {} } },
   );
 
-  for (const def of PHASE0_TOOLS) {
-    // Annotations attached per tool below
-    void def;
+  // One whoami per HTTP request, shared by every tool call in it.
+  let whoamiMemo: Promise<WhoamiRow> | null = null;
+  const whoami = () => (whoamiMemo ??= getContext().rpc<WhoamiRow>("whoami"));
+
+  for (const spec of TOOLS) {
+    server.registerTool(
+      spec.name,
+      { title: spec.title, description: spec.description, inputSchema: spec.input, annotations: spec.annotations },
+      async (args: Record<string, unknown>) => runSpec(spec, getContext(), args ?? {}, whoami),
+    );
   }
-
-  server.registerTool(
-    "auctus_whoami",
-    {
-      description: "Returns MCP entitlements, plan basis, scopes, and MA quota.",
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async () => runTool(getContext, async (ctx) => port.toolWhoami(ctx)),
-  );
-
-  server.registerTool(
-    "auctus_saring_list_projects",
-    {
-      description: "List accessible Saring projects with role.",
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async () => runTool(getContext, async (ctx) => port.toolSaringListProjects(ctx)),
-  );
-
-  server.registerTool(
-    "auctus_saring_project_summary",
-    {
-      description: "Project summary counts (no collaborator email).",
-      inputSchema: z.object({ project_id: uuid }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolSaringProjectSummary(ctx, args.project_id)),
-  );
-
-  server.registerTool(
-    "auctus_saring_list_records",
-    {
-      description: "Paginated records; abstracts in untrusted_content.",
-      inputSchema: z.object({
-        project_id: uuid,
-        status: z.enum(["undecided", "include", "maybe", "exclude"]).optional(),
-        query: z.string().max(200).optional(),
-        cursor: z.string().max(200).optional(),
-        limit: z.number().int().min(1).max(50).optional(),
-      }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolSaringListRecords(ctx, args)),
-  );
-
-  server.registerTool(
-    "auctus_saring_get_record",
-    {
-      description: "Fetch one screening record.",
-      inputSchema: z.object({ project_id: uuid, record_id: z.string().min(1).max(120) }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolSaringGetRecord(ctx, args)),
-  );
-
-  server.registerTool(
-    "auctus_ma_list_papers",
-    {
-      description: "List user's MA papers.",
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async () => runTool(getContext, async (ctx) => port.toolMaListPapers(ctx)),
-  );
-
-  server.registerTool(
-    "auctus_ma_get_paper",
-    {
-      description: "Paper details and outcomes.",
-      inputSchema: z.object({ paper_id: uuid }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolMaGetPaper(ctx, args.paper_id)),
-  );
-
-  server.registerTool(
-    "auctus_ma_get_outcome_data",
-    {
-      description: "Outcome extraction rows.",
-      inputSchema: z.object({ outcome_id: uuid }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolMaGetOutcomeData(ctx, args.outcome_id)),
-  );
-
-  server.registerTool(
-    "auctus_ma_get_rob",
-    {
-      description: "Risk of bias data.",
-      inputSchema: z.object({ outcome_id: uuid }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolMaGetRob(ctx, args.outcome_id)),
-  );
-
-  server.registerTool(
-    "auctus_ma_get_grade",
-    {
-      description: "GRADE ratings.",
-      inputSchema: z.object({ outcome_id: uuid }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolMaGetGrade(ctx, args.outcome_id)),
-  );
-
-  server.registerTool(
-    "auctus_ma_check_ready",
-    {
-      description: "Read-only MA readiness check.",
-      inputSchema: z.object({ outcome_id: uuid }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolMaCheckReady(ctx, args.outcome_id)),
-  );
-
-  server.registerTool(
-    "auctus_ma_list_jobs",
-    {
-      description: "List jobs for an outcome (no download URLs).",
-      inputSchema: z.object({ outcome_id: uuid }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolMaListJobs(ctx, args.outcome_id)),
-  );
-
-  server.registerTool(
-    "auctus_ma_get_job",
-    {
-      description: "Job summary (no download URLs).",
-      inputSchema: z.object({ job_id: uuid }),
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    },
-    async (args, _extra) => runTool(getContext, async (ctx) => port.toolMaGetJob(ctx, args.job_id)),
-  );
-
-  const pubmedAnnotations = {
-    readOnlyHint: true as const,
-    destructiveHint: false as const,
-    idempotentHint: false as const,
-    openWorldHint: true as const,
-  };
-
-  server.registerTool(
-    "auctus_pubmed_search",
-    {
-      description: "Search PubMed (NCBI E-utilities). Returns PMIDs; query text is third-party.",
-      inputSchema: z.object({
-        query: z.string().min(1).max(500),
-        max_results: z.number().int().min(1).max(25).optional(),
-        min_date: z.string().regex(/^\d{4}(\/\d{2}(\/\d{2})?)?$/).optional(),
-        max_date: z.string().regex(/^\d{4}(\/\d{2}(\/\d{2})?)?$/).optional(),
-        publication_types: z.array(z.string().max(80)).max(5).optional(),
-        sort: z.enum(["relevance", "pub_date"]).optional(),
-      }),
-      annotations: { ...pubmedAnnotations, idempotentHint: false },
-    },
-    async (args, _extra) =>
-      runPubMedTool(getContext, "auctus_pubmed_search", args, async (ctx) => pubmed.toolPubmedSearch(ctx, args)),
-  );
-
-  server.registerTool(
-    "auctus_pubmed_get_articles",
-    {
-      description: "Batch-fetch PubMed articles; title/abstract in untrusted_content.",
-      inputSchema: z.object({
-        pmids: z.array(z.string().regex(/^\d+$/)).min(1).max(20),
-      }),
-      annotations: { ...pubmedAnnotations, idempotentHint: true },
-    },
-    async (args, _extra) =>
-      runPubMedTool(getContext, "auctus_pubmed_get_articles", args, async (ctx) =>
-        pubmed.toolPubmedGetArticles(ctx, args.pmids),
-      ),
-  );
-
-  server.registerTool(
-    "auctus_pubmed_mesh_lookup",
-    {
-      description: "MeSH term lookup via NCBI (open-world third-party labels).",
-      inputSchema: z.object({
-        term: z.string().min(1).max(200),
-        max_results: z.number().int().min(1).max(15).optional(),
-      }),
-      annotations: { ...pubmedAnnotations, idempotentHint: true },
-    },
-    async (args, _extra) =>
-      runPubMedTool(getContext, "auctus_pubmed_mesh_lookup", args, async (ctx) => pubmed.toolPubmedMeshLookup(ctx, args)),
-  );
-
-  server.registerTool(
-    "auctus_pubmed_verify_pmids",
-    {
-      description:
-        "Check that PMIDs exist on PubMed (catch invented citations). Returns found flag, date, publication types, and is_review per PMID; titles are untrusted.",
-      inputSchema: z.object({
-        pmids: z.array(z.string().regex(/^\d{1,9}$/)).min(1).max(50),
-      }),
-      annotations: { ...pubmedAnnotations, idempotentHint: true },
-    },
-    async (args, _extra) =>
-      runPubMedTool(getContext, "auctus_pubmed_verify_pmids", args, async (ctx) =>
-        pubmed.toolPubmedVerifyPmids(ctx, args.pmids),
-      ),
-  );
-
-  server.registerTool(
-    "auctus_pubmed_find_related",
-    {
-      description:
-        "PMIDs linked to one article: similar articles, articles citing it (cited_by), or its references. PMIDs only; fetch details with auctus_pubmed_verify_pmids or auctus_pubmed_get_articles.",
-      inputSchema: z.object({
-        pmid: z.string().regex(/^\d{1,9}$/),
-        relation: z.enum(["similar", "cited_by", "references"]),
-        max_results: z.number().int().min(1).max(25).optional(),
-      }),
-      annotations: { ...pubmedAnnotations, idempotentHint: true },
-    },
-    async (args, _extra) =>
-      runPubMedTool(getContext, "auctus_pubmed_find_related", args, async (ctx) => pubmed.toolPubmedFindRelated(ctx, args)),
-  );
-
+  registerResourcesAndPrompts(server, getContext, whoami);
   return server;
-}
-
-async function runTool<T>(getContext: () => ToolContext, fn: (ctx: ToolContext) => Promise<T>) {
-  const ctx = getContext();
-  if (!ctx.userId) throw new Error("unauthorized");
-  if (!scopeIncludes(MCP_SCOPES.SR_READ, ctx.scopes)) {
-    throw new Error("insufficient_scope");
-  }
-  const who = await port.toolWhoami(ctx);
-  const ent = resolveEntitlement({
-    enrollmentTier: who.entitlement.tier ?? null,
-    hasCoachingAssignment: who.entitlement.basis === "coaching_assignment",
-    mcpPilotAllowed: who.mcp_pilot.allowed,
-  });
-  if (!ent.allowed) throw new Error("plan_denied");
-  const result = await fn(ctx);
-  return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-}
-
-async function runPubMedTool<T>(
-  getContext: () => ToolContext,
-  toolName: string,
-  rawArgs: Record<string, unknown>,
-  fn: (ctx: ToolContext) => Promise<T>,
-) {
-  const auditMeta = await pubmedAuditArgsHash(toolName, rawArgs);
-  try {
-    const out = await runTool(getContext, fn);
-    await getContext().auditTool?.({
-      tool: toolName,
-      argsHash: auditMeta.argsHash,
-      status: "ok",
-      recordCount: auditMeta.recordCount,
-    });
-    const text = out.content[0]?.type === "text" ? out.content[0].text : JSON.stringify(out);
-    const parsed = JSON.parse(text) as unknown;
-    const capped = capJsonResponse(parsed);
-    return { content: [{ type: "text" as const, text: capped.body }] };
-  } catch (e) {
-    await getContext().auditTool?.({
-      tool: toolName,
-      argsHash: auditMeta.argsHash,
-      status: "error",
-      recordCount: auditMeta.recordCount,
-    });
-    const safe =
-      e instanceof Error &&
-      ["rate_limited", "invalid_input", "pubmed_unavailable", "plan_denied", "insufficient_scope", "unauthorized"].includes(
-        e.message,
-      )
-        ? e.message
-        : "pubmed_unavailable";
-    throw new Error(safe);
-  }
 }
