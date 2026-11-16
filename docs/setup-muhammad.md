@@ -1,69 +1,61 @@
-# Panduan setup untuk Muhammad (staging)
+# Panduan setup staging (untuk Muhammad)
 
-Urutan disarankan sebelum `wrangler deploy --env staging` (deploy **tidak** diotomasi dari repo ini).
+Tidak ada deploy otomatis dari repo ini. Semua langkah di bawah dikerjakan di **staging** dulu (`gxbwpuvgmhcsurrtqhrk`), bukan prod.
 
-## 1. Cloudflare
+## 1. Database (repo auctus-academy)
 
-1. Buat account Workers Paid (jika belum).
-2. Buat **dua** KV namespace: `OAUTH_KV`, `MCP_OPS`; isi ID di `wrangler.toml` (`env.staging`).
-3. (Opsional) Durable Object rate limit — Fase 0 memakai KV saja.
-4. DNS (setelah siap):
-   - `auth.mcp-staging.auctus.academy` → Worker OAuth (atau satu Worker gabungan)
-   - `mcp-staging.auctus.academy` → route `/mcp`
-5. WAF rate limit pada header `Mcp-Method` / `Mcp-Name` — konfigurasi dashboard.
+1. Merge PR academy yang berisi `supabase/migrations/20261116120000_mcp_gateway.sql` ke `staging`. Supabase GitHub Integration akan menerapkannya.
+2. Migrasi ini memasang `pgrst.db_pre_request = mcp.pre_request` pada role `authenticator` dan menambah `mcp` ke `pgrst.db_schemas` bila daftar itu di-pin. Bila migrasi gagal dengan pesan "already has pgrst.db_pre_request", ada pre-request lain yang harus dirangkai dulu.
+3. Setelah apply, verifikasi: `supabase/tests/mcp_gateway.sql` (pgTAP, rollback sendiri).
 
-## 2. Secrets Worker (`wrangler secret put`, staging)
+## 2. Supabase Auth: OAuth 2.1 Server (staging)
 
-| Nama | Keterangan |
-|------|------------|
-| `TOKEN_ENCRYPTION_SECRET` | 32+ byte random (props grant); rotate terdokumentasi |
-| `SUPABASE_URL` | URL project **staging** (bukan prod `qtphbhqvkeqqmbvgtmec`) |
-| `SUPABASE_ANON_KEY` | Anon key staging |
-| `SUPABASE_OAUTH_CLIENT_ID` | Confidential client `auctus-mcp-gateway` di Supabase Auth OAuth 2.1 |
-| `SUPABASE_OAUTH_CLIENT_SECRET` | Secret client tersebut |
-| `SUPABASE_OAUTH_REDIRECT_URI` | Callback Worker `/consent/upstream-callback` |
-| `NCBI_API_KEY` | API key NCBI E-utilities (wajib staging/prod untuk 10 req/s global) |
-| `NCBI_TOOL` | Identitas tool NCBI, mis. `auctus-mcp` |
-| `NCBI_EMAIL` | Kontak NCBI (wajib sebelum `MOCK_MODE=0`) |
+1. Dashboard > Authentication > OAuth Server: **Enable**. Authorization URL path: `/oauth/consent`. **Dynamic client registration: OFF.**
+2. Pastikan Site URL staging menunjuk ke web staging (halaman consent ada di `<site>/oauth/consent`).
+3. Daftarkan klien **confidential** "Auctus MCP gateway", `client_secret_basic`, grant `authorization_code` + `refresh_token`, redirect `https://auth.mcp-staging.auctus.academy/consent/upstream-callback`. Simpan `client_id` dan `client_secret`.
 
-Salin pola dari `.dev.vars.example`. **Jangan** commit nilai asli.
+## 3. Cloudflare Worker
 
-### PubMed (Fase 0)
+1. Buat KV `OAUTH_KV` dan `MCP_OPS` (staging), isi ID di `wrangler.toml` `[env.staging]`.
+2. Binding R2 **baca** ke bucket korpus Saring staging (`saring-corpus-staging`) dengan nama binding `SARING_CORPUS`.
+3. Secret (`wrangler secret put --env staging`):
 
-- Panggilan langsung ke `https://eutils.ncbi.nlm.nih.gov` (tanpa proxy MCP pihak ketiga).
-- Rate limit: 30 panggilan PubMed/menit per user+client (KV) **dan** 10 req/detik global NCBI (KV).
-- Audit: hash + panjang query; PMID count pada `get_articles` — **tidak** menyimpan teks query penuh di rantai audit.
-- Lokal: `MOCK_MODE=1` memakai fixture tanpa jaringan.
+| Nama | Isi |
+|------|-----|
+| `SUPABASE_URL` | `https://gxbwpuvgmhcsurrtqhrk.supabase.co` |
+| `SUPABASE_ANON_KEY` | anon key staging |
+| `SUPABASE_OAUTH_CLIENT_ID` / `SUPABASE_OAUTH_CLIENT_SECRET` | dari langkah 2.3 |
+| `SUPABASE_OAUTH_REDIRECT_URI` | `https://auth.mcp-staging.auctus.academy/consent/upstream-callback` |
+| `NCBI_API_KEY`, `NCBI_TOOL`, `NCBI_EMAIL` | E-utilities |
 
-## 3. Supabase (staging only)
+4. DNS/route: `auth.mcp-staging.auctus.academy` dan `mcp-staging.auctus.academy` ke Worker. `ISSUER_URL`, `RESOURCE_URL`, `WEB_APP_ORIGIN` sudah di `wrangler.toml`.
+5. WAF: rate limit per header `Mcp-Method`/`Mcp-Name` (Worker sudah menolak header yang tidak cocok dengan body).
+6. Pilot: isi `ops:kill_switch` di KV `MCP_OPS` (contoh di bawah). `pilotClientIds` kosong berarti semua klien boleh.
 
-1. Review & apply migrasi `supabase/migrations/20261114000000_mcp_schema.sql` lewat PR di **auctus-academy**, bukan langsung dari repo ini.
-2. Daftar OAuth client confidential `auctus-mcp-gateway`; matikan DCR di Supabase.
-3. RLS restriktif JWT `client_id = auctus-mcp-gateway` untuk schema `saring`, `research`, `ma`, `prisma` — issue terpisah di academy.
-4. RPC yang dipakai tool: `saring.can_access_project`, `ma.my_quota`, `ma.pilot_status`, dll. (sesuai staging branch `ma-workspace`).
+## 4. Web academy (Vercel, environment staging)
 
-## 4. Aplikasi web (auctus.academy)
+| Env | Nilai |
+|-----|-------|
+| `MCP_GATEWAY_ENABLED` | `1` (default mati; tanpa ini halaman Koneksi AI dan consent 404) |
+| `MCP_AUTH_ORIGIN` | `https://auth.mcp-staging.auctus.academy` |
+| `NEXT_PUBLIC_MCP_RESOURCE_URL` | `https://mcp-staging.auctus.academy/mcp` |
+| `SUPABASE_MCP_GATEWAY_CLIENT_ID` | `client_id` dari langkah 2.3 |
 
-1. Halaman consent `/riset/koneksi-ai/oauth/authorize` — integrasi dengan flow Worker (`WEB_APP_ORIGIN` redirect dari `/authorize`).
-2. Halaman Koneksi AI: daftar grant, cabut, riwayat audit (baca `mcp.connections` / `mcp.audit_events`).
-3. Set `MOCK_MODE=0` di staging Worker.
+## 5. Verifikasi di staging
 
-## 5. Verifikasi
+1. Login dari Claude, Cursor, Codex (smoke): consent Worker, login Auctus, consent kedua, `auctus_whoami`.
+2. User Free ditolak setelah login (halaman "Paket belum mendukung").
+3. `auctus_saring_set_decision` lalu `auctus_changes_revert`; usulan >20 record muncul di `/riset/koneksi-ai` dan bisa disetujui.
+4. Cabut koneksi dari halaman Koneksi AI, lalu panggilan berikutnya 401.
+5. Logout semua perangkat di Auctus, lalu panggilan MCP gagal dalam sekitar 1 menit.
 
-1. OAuth end-to-end dari minimal: Claude, Cursor, Codex (smoke).
-2. `auctus_whoami` + satu tool baca dengan user Complete.
-3. User Free ditolak di consent.
-4. Tes lintas tenant setelah port Supabase hidup.
-5. Aktifkan pilot: tulis `ops:kill_switch` di KV `MCP_OPS` (`pilotClientIds`).
-
-## 6. Kill switch (KV)
-
-Contoh nilai JSON kunci `ops:kill_switch`:
+## 6. Kill switch (KV `MCP_OPS`, kunci `ops:kill_switch`)
 
 ```json
-{
-  "globalDisabled": false,
-  "disabledClientIds": [],
-  "pilotClientIds": ["<client_id_pilot>"]
-}
+{ "globalDisabled": false, "disabledClientIds": [], "pilotClientIds": [] }
 ```
+
+## Uji lokal tanpa staging
+
+- `npm run dev` (MOCK_MODE=1) untuk alur OAuth + tool dengan data palsu.
+- Kontrak SQL: Supabase lokal dengan migrasi academy, `psql < scripts/e2e-seed.sql`, lalu `MCP_E2E_ENV=<supabase status -o env> npx vitest run tests/e2e-supabase.test.ts`.

@@ -1,28 +1,27 @@
-# Checklist keamanan PRD §11 — status Fase 0
+# Checklist keamanan PRD §11
 
-Legenda: ✅ lulus scaffold / tes | ⚠️ sebagian / stub | ❌ belum | 🔜 butuh deploy / academy
+Legenda: ✅ diimplementasi + diuji lokal | 🔜 butuh deploy/konfigurasi | ❌ belum | 👤 butuh keputusan/aksi manusia
 
 | Item | Status |
 |------|--------|
-| PRM RFC 9728 + 401 challenge | ✅ via OAuthProvider |
-| PKCE S256, iss, resource, redirect exact | ✅ library + validasi redirect |
-| CIMD + DCR terbatas | ✅ allowlist host; TTL 90 hari |
-| Consent Indonesia, loopback warning, frame-ancestors | ✅ `consent-page.ts` |
-| Token ≤10 menit, refresh rotation | ✅ `ACCESS_TOKEN_TTL_SECONDS=600` |
-| No token passthrough | ✅ |
-| Scope + entitlement + can_access_project | ⚠️ entitlement ✅; RPC Supabase TODO |
-| No service role di jalur tool | ✅ `scripts/check-no-service-role.sh` |
-| RLS gateway `auctus-mcp-gateway` | 🔜 migrasi di repo academy |
-| Lintas tenant CI | ✅ `tests/cross-tenant.test.ts` |
-| untrusted_content + batas ukuran | ✅ |
-| Anotasi tool jujur (`readOnlyHint`, `openWorldHint` PubMed) | ✅ `catalog.ts` |
-| PubMed native E-utilities (bukan proxy MCP) | ✅ `src/pubmed/` |
-| Audit PubMed tanpa query plaintext | ✅ `pubmed/audit-args.ts` |
-| Rencana impor PubMed → Saring | 📄 `docs/pubmed-phase1-plan.md` |
-| W2 / approval | N/A Fase 0 |
-| Audit append-only + hash chain | ⚠️ tes unit; Postgres TODO |
-| Rate limit | ✅ read path |
-| Halaman Koneksi AI revoke | 🔜 academy #1789 |
-| Kill switch + pilot allowlist | ✅ KV |
-| Dependabot + gitleaks | ✅ CI |
-| Privasi / legal | 🔜 Muhammad / legal |
+| PRM RFC 9728, 401 + `resource_metadata` + `scope` | ✅ smoke |
+| PKCE S256, `iss`, `resource`, redirect exact, `state` sekali pakai | ✅ smoke (iss + state dikembalikan, replay handle ditolak) |
+| CIMD + DCR terbatas (allowlist, 10/jam/IP, TTL 90 hari) | ✅ |
+| Consent milik Auctus, CSRF, `frame-ancestors`, loopback warning | ✅ |
+| Token ≤10 menit, refresh rotasi, idle 7 / absolut 30 hari | ✅ |
+| Tanpa token passthrough | ✅ |
+| Scope + entitlement (Free ditolak) + `can_access_project` | ✅ pgTAP + e2e |
+| Tanpa service role di jalur tool | ✅ `scripts/check-no-service-role.sh` |
+| Pembatasan token gateway deny-by-default | ✅ pgTAP + uji HTTP PostgREST |
+| Lintas tenant | ✅ pgTAP, e2e, unit |
+| `untrusted_content`, tanpa email kolaborator, batas ukuran | ✅ |
+| Anotasi jujur, katalog di-hash | ✅ |
+| W2 tidak bisa di-commit tanpa manusia | ✅ pgTAP (`web_only`, `reauth_required`, `payload_changed`) |
+| Audit append-only + hash chain + revert | ✅ pgTAP |
+| Rate limit + ukuran payload | ✅ unit; 🔜 uji beban |
+| Koneksi AI: cabut satu/semua langsung berlaku | ✅ diuji di browser lokal |
+| Pencabutan otomatis saat ganti password / akses berakhir | ✅ unit (session check, refresh `invalid_grant`); 🔜 uji di staging |
+| Kill switch global + per klien | ✅ |
+| Dependensi dipin, secret di store, RUNBOOK rotasi | ✅ lockfile; 🔜 RUNBOOK |
+| Pentest internal (Fase 0), pentest eksternal + red-team (Fase 1), uji abuse kuota + pentest regresi (Fase 2) | 👤 |
+| Kebijakan privasi / UU PDP | 👤 |
