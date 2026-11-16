@@ -35,3 +35,31 @@ export function wrapUntrustedText(raw: string, maxChars = 8000): UntrustedText {
     },
   };
 }
+/** Structural keys whose string values come from Auctus enums, ids or timestamps, never from people. */
+const STRUCTURAL_KEYS = new Set([
+  "id", "status", "level", "kind", "role", "framework", "analysis", "outcome_type", "effect_measure", "direction",
+  "input_mode", "certainty", "tool", "variant", "approval_path", "message", "error", "source", "tier", "basis",
+  "estimateType", "year", "doi", "pmid", "pmids", "not_found", "not_on_pubmed", "files", "relation", "code", "scope",
+  "scopes", "type", "pub_date_iso", "pub_date", "publication_types", "matched_by", "next_cursor", "url", "uid", "tree_numbers",
+]);
+const STRUCTURAL_SUFFIX = /(_id|Id|_at|_ids)$/;
+
+/**
+ * Wraps every free-text string in a tool result (pentest F4): collaborator
+ * notes and reasons, project names, MA study fields and change-set payloads are
+ * written by other people or other AIs and must reach the model as data.
+ */
+export function untrustStrings<T>(value: T, key = ""): T {
+  if (typeof value === "string") {
+    if (!key || STRUCTURAL_KEYS.has(key) || STRUCTURAL_SUFFIX.test(key) || value.length === 0) return value;
+    return wrapUntrustedText(value, 4000) as unknown as T;
+  }
+  if (Array.isArray(value)) return value.map((v) => untrustStrings(v, key)) as unknown as T;
+  if (value && typeof value === "object") {
+    if ("untrusted_content" in (value as Record<string, unknown>)) return value;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = untrustStrings(v, k);
+    return out as T;
+  }
+  return value;
+}

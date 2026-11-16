@@ -342,7 +342,14 @@ export const TOOLS: ToolSpec[] = [
     input: { change_set_id: uuid },
     description:
       "Batalkan change set yang dibuat lewat MCP. Ditolak bila data sudah berubah lagi. Perubahan yang dulu disetujui manusia hanya bisa dibatalkan dengan persetujuan lagi.",
-    run: (ctx, a) => ctx.rpc("changes_revert", { p_id: a.change_set_id, p_client: clientJson(ctx) }),
+    // Pentest F2: undoing data is a write, so it needs the write scope of the change it reverts.
+    run: async (ctx, a) => {
+      const target = await ctx.rpc<{ kind?: string; summary?: { kind?: string } }>("changes_get", { p_id: a.change_set_id });
+      const kind = target.kind === "revert" ? target.summary?.kind : target.kind;
+      const needed = kind === "saring_decisions" ? "saring.write" : kind?.startsWith("ma_") ? "ma.write" : null;
+      if (!needed || !ctx.scopes.includes(needed)) throw new Error("insufficient_scope");
+      return ctx.rpc("changes_revert", { p_id: a.change_set_id, p_client: clientJson(ctx) });
+    },
   },
 
   // ---------------- Phase 2: jobs and dedup ----------------

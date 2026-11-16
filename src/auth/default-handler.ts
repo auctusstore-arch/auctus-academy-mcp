@@ -5,6 +5,7 @@ import type { WhoamiRow } from "../data/port";
 import { resolveEntitlementFromWhoami } from "../entitlement";
 import { catalogWellKnownJson } from "../mcp/catalog";
 import { handleConnectionsApi } from "./connections-api";
+import { isRedirectAllowed } from "../security/redirect-uri";
 import { formActionSources, renderConsentPage, renderPlanDeniedPage, renderErrorPage } from "./consent-page";
 import {
   buildUpstreamAuthorizeUrl,
@@ -45,6 +46,7 @@ async function handleAuthorize(request: Request, env: Env): Promise<Response> {
   try {
     if (request.method === "GET") {
       const parsed = await oauth.parseAuthRequest(request);
+      if (!isRedirectAllowed(parsed.redirectUri)) return redirectRefused();
       const details = await oauth.describeConsent(parsed);
       const consent = await oauth.beginConsent(parsed);
       // Approve goes Worker -> Supabase authorize -> academy /oauth/consent; deny goes to the client.
@@ -59,6 +61,7 @@ async function handleAuthorize(request: Request, env: Env): Promise<Response> {
         return new Response(null, { status: 302, headers: denied.headers });
       }
       const approved = await oauth.approveConsent(request, handle, { scope: approvedScopes(form) });
+      if (!isRedirectAllowed(approved.request.redirectUri)) return redirectRefused();
       if (isMockMode(env)) {
         const completed = await oauth.completeAuthorization({
           request: approved.request,
@@ -100,6 +103,7 @@ async function handleUpstreamCallback(request: Request, env: Env): Promise<Respo
   const oauth: OAuthHelpers = env.OAUTH_PROVIDER;
   try {
     const resumed = await oauth.finishUpstream<{ verifier: string }>(request);
+    if (!isRedirectAllowed(resumed.request.redirectUri)) return redirectRefused();
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
     if (!code || url.searchParams.get("error")) {
@@ -159,6 +163,13 @@ function authorizeFailure(e: unknown): Response {
   }
   return new Response(renderErrorPage("Layanan login sedang bermasalah. Coba lagi beberapa saat lagi."), {
     status: 503,
+    headers: htmlHeaders(),
+  });
+}
+
+function redirectRefused(): Response {
+  return new Response(renderErrorPage("Aplikasi ini mengirim izin ke alamat yang tidak dikenal Auctus, jadi tidak bisa dilanjutkan."), {
+    status: 400,
     headers: htmlHeaders(),
   });
 }

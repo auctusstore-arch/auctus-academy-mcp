@@ -6,6 +6,7 @@ import { resolveEntitlementFromWhoami } from "../entitlement";
 import { createHash } from "../lib/hash";
 import { pubmedAuditArgsHash } from "../pubmed/audit-args";
 import { checkWriteRateLimit } from "../security/rate-limit";
+import { untrustStrings } from "../security/untrusted";
 import { registerResourcesAndPrompts } from "./resources";
 import { TOOLS, type ToolSpec } from "./tools";
 
@@ -73,13 +74,14 @@ export async function runSpec(spec: ToolSpec, ctx: ToolContext, args: Record<str
       return errorResult("plan_denied");
     }
     if (spec.level !== "read") {
-      const rl = await checkWriteRateLimit(ctx.env.MCP_OPS, ctx.userId, ctx.clientId);
+      const rl = await checkWriteRateLimit(ctx.env, ctx.userId, ctx.clientId);
       if (!rl.allowed) {
         await log("denied");
         return errorResult("rate_limited", { retry_after_seconds: rl.retryAfterSec });
       }
     }
-    const result = await spec.run(ctx, args);
+    // Every free-text string goes to the model wrapped as untrusted data (pentest F4).
+    const result = spec.name === "auctus_whoami" ? await spec.run(ctx, args) : untrustStrings(await spec.run(ctx, args));
     const text = JSON.stringify(result ?? null, null, 2);
     if (text.length > MAX_RESPONSE_BYTES) {
       await log("error");

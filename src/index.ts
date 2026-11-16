@@ -13,6 +13,7 @@ import { defaultHandler } from "./auth/default-handler";
 import type { AuthProps } from "./auth/props";
 import { refreshUpstream, upstreamConfigFromEnv, UpstreamError } from "./auth/upstream";
 import { handleMcpRequest } from "./mcp/handler";
+import { loadKillSwitch } from "./security/kill-switch";
 import { checkDcrRateLimit } from "./security/rate-limit";
 import { hostOfRedirectUri } from "./security/redirect-uri";
 
@@ -83,10 +84,18 @@ let cachedProviderKey = "";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    // DCR is limited per IP (PRD §9); the library's registration callback has no env access.
-    if (request.method === "POST" && new URL(request.url).pathname === "/register") {
+    const path = new URL(request.url).pathname;
+    // Kill switch also stops new logins and token refresh, not only /mcp (pentest F8c).
+    if (path === "/authorize" || path === "/token" || path === "/register") {
+      const kill = await loadKillSwitch(env.MCP_OPS).catch(() => null);
+      if (kill?.globalDisabled) {
+        return new Response(JSON.stringify({ error: "temporarily_unavailable" }), { status: 503, headers: { "Content-Type": "application/json", "Retry-After": "300" } });
+      }
+    }
+    // DCR is limited per IP and redirect host class (PRD §9); the registration callback has no env access.
+    if (request.method === "POST" && path === "/register") {
       const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-      const rl = await checkDcrRateLimit(env.MCP_OPS, ip);
+      const rl = await checkDcrRateLimit(env, ip, await redirectClassOf(request));
       if (!rl.allowed) {
         return new Response(JSON.stringify({ error: "slow_down", error_description: "too many registrations" }), {
           status: 429,
@@ -104,3 +113,20 @@ export default {
 };
 
 export { buildProvider };
+
+/** "platform" only when every redirect URI is on an allowlisted https platform host. */
+async function redirectClassOf(request: Request): Promise<"platform" | "other"> {
+  try {
+    const body = (await request.clone().json()) as { redirect_uris?: unknown };
+    const uris = Array.isArray(body.redirect_uris) ? body.redirect_uris.map(String) : [];
+    if (!uris.length) return "other";
+    return uris.every((u) => {
+      const url = new URL(u);
+      return url.protocol === "https:" && DCR_REDIRECT_HOST_ALLOWLIST.has(url.hostname) && url.hostname !== "localhost";
+    })
+      ? "platform"
+      : "other";
+  } catch {
+    return "other";
+  }
+}

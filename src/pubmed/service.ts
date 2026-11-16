@@ -16,10 +16,10 @@ import {
 } from "./constants";
 
 export async function assertPubmedRateLimits(ctx: ToolContext): Promise<void> {
-  const userRl = await checkPubMedUserRateLimit(ctx.env.MCP_OPS, ctx.userId, ctx.clientId);
+  const userRl = await checkPubMedUserRateLimit(ctx.env, ctx.userId, ctx.clientId);
   if (!userRl.allowed) throw new Error("rate_limited");
   if (!isMockMode(ctx.env)) {
-    const globalRl = await checkNcbiGlobalRateLimit(ctx.env.MCP_OPS);
+    const globalRl = await checkNcbiGlobalRateLimit(ctx.env);
     if (!globalRl.allowed) throw new Error("rate_limited");
   }
 }

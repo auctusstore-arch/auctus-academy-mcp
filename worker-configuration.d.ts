@@ -14,6 +14,10 @@ interface Env {
   SUPABASE_OAUTH_REDIRECT_URI?: string;
   TOKEN_ENCRYPTION_SECRET?: string;
   SARING_CORPUS?: R2Bucket;
+  RL_READ?: RateLimit;
+  RL_WRITE?: RateLimit;
+  RL_PUBMED?: RateLimit;
+  RL_NCBI?: RateLimit;
   NCBI_API_KEY?: string;
   NCBI_TOOL?: string;
   NCBI_EMAIL?: string;

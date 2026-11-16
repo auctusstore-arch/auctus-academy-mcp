@@ -35,3 +35,23 @@ export function hostOfRedirectUri(redirectUri: string): string | null {
     return null;
   }
 }
+/**
+ * Redirect policy for EVERY client, including Client ID Metadata Document
+ * clients whose redirect_uris the library accepts from any https host
+ * (pentest F1). Only the AI platforms' hosts (https) and loopback (http/https)
+ * may receive an authorization code.
+ */
+export function isRedirectAllowed(redirectUri: string | undefined | null): boolean {
+  if (!redirectUri) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(redirectUri);
+  } catch {
+    return false;
+  }
+  if (parsed.hash || parsed.username || parsed.password) return false;
+  const loopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" || parsed.hostname === "[::1]";
+  if (parsed.protocol === "http:") return loopback;
+  if (parsed.protocol !== "https:") return false;
+  return loopback || DCR_REDIRECT_HOST_ALLOWLIST.has(parsed.hostname.toLowerCase());
+}

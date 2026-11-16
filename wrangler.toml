@@ -1,5 +1,5 @@
 # Auctus MCP — Phase 0 scaffold. No deploy scripts; use `wrangler dev` locally.
-name = "auctus-mcp"
+name = "auctus-mcp-local" # never the production name: a bare `wrangler deploy` must not ship mock mode
 main = "src/index.ts"
 compatibility_date = "2025-11-14"
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
@@ -31,6 +31,28 @@ RESOURCE_URL = "http://127.0.0.1:8787/mcp"
 ISSUER_URL = "http://127.0.0.1:8787"
 WEB_APP_ORIGIN = "http://127.0.0.1:3000"
 
+
+[[ratelimits]]
+name = "RL_READ"
+namespace_id = "17891"
+simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "RL_WRITE"
+namespace_id = "17892"
+simple = { limit = 10, period = 60 }
+
+[[ratelimits]]
+name = "RL_PUBMED"
+namespace_id = "17893"
+simple = { limit = 30, period = 60 }
+
+# NCBI: 10 req/s per API key, counted per 10 s window.
+[[ratelimits]]
+name = "RL_NCBI"
+namespace_id = "17894"
+simple = { limit = 90, period = 10 }
+
 [env.staging]
 name = "auctus-mcp-staging"
 routes = [
@@ -52,8 +74,30 @@ id = "f48981df8c13425ba2f71666b1a831b6"
 binding = "SARING_CORPUS"
 bucket_name = "saring-corpus-staging"
 
+
+[[env.staging.ratelimits]]
+name = "RL_READ"
+namespace_id = "17881"
+simple = { limit = 60, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "RL_WRITE"
+namespace_id = "17882"
+simple = { limit = 10, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "RL_PUBMED"
+namespace_id = "17883"
+simple = { limit = 30, period = 60 }
+
+# NCBI: 10 req/s per API key, counted per 10 s window.
+[[env.staging.ratelimits]]
+name = "RL_NCBI"
+namespace_id = "17884"
+simple = { limit = 90, period = 10 }
+
 [env.production]
-name = "auctus-mcp"
+name = "auctus-mcp-local" # never the production name: a bare `wrangler deploy` must not ship mock mode
 vars = { ENVIRONMENT = "production", MOCK_MODE = "0", RESOURCE_URL = "https://mcp.auctus.academy/mcp", ISSUER_URL = "https://auth.mcp.auctus.academy", WEB_APP_ORIGIN = "https://auctus.academy" }
 
 [[env.production.kv_namespaces]]
@@ -63,3 +107,23 @@ id = "REPLACE_WITH_PROD_OAUTH_KV_ID"
 [[env.production.kv_namespaces]]
 binding = "MCP_OPS"
 id = "REPLACE_WITH_PROD_MCP_OPS_KV_ID"
+[[env.production.ratelimits]]
+name = "RL_READ"
+namespace_id = "17871"
+simple = { limit = 60, period = 60 }
+
+[[env.production.ratelimits]]
+name = "RL_WRITE"
+namespace_id = "17872"
+simple = { limit = 10, period = 60 }
+
+[[env.production.ratelimits]]
+name = "RL_PUBMED"
+namespace_id = "17873"
+simple = { limit = 30, period = 60 }
+
+# NCBI: 10 req/s per API key, counted per 10 s window.
+[[env.production.ratelimits]]
+name = "RL_NCBI"
+namespace_id = "17874"
+simple = { limit = 90, period = 10 }

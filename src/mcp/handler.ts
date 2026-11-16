@@ -7,6 +7,7 @@ import { createMockRpc, sharedMockDb } from "../data/mock-rpc";
 import type { ToolContext } from "../data/port";
 import { createRpcCaller, type RpcCaller } from "../data/supabase";
 import { createHash } from "../lib/hash";
+import { readCapped } from "../lib/read-capped";
 import { evaluateAccess, loadKillSwitch } from "../security/kill-switch";
 import { checkReadRateLimit } from "../security/rate-limit";
 import { createMcpServer } from "./register-tools";
@@ -44,14 +45,16 @@ export async function handleMcpRequest(request: Request, env: Env, ctx: OAuthRes
   const userId = ctx.props?.userId ?? ctx.auth.userId ?? "";
   if (!userId) return json(401, { error: "unauthorized" });
 
-  const rl = await checkReadRateLimit(env.MCP_OPS, userId, clientId);
+  const rl = await checkReadRateLimit(env, userId, clientId);
   if (!rl.allowed) return json(429, { error: "rate_limited" }, { "Retry-After": String(rl.retryAfterSec ?? 60) });
 
   // Read the body once with a hard size cap (Content-Length can be absent or wrong).
   let raw = "";
   if (request.method === "POST") {
-    raw = await request.text();
-    if (raw.length > MAX_REQUEST_BYTES) return json(413, { error: "payload_too_large" });
+    // Counted in bytes while streaming, so an oversized body is never fully buffered (pentest F7).
+    const bytes = await readCapped(request.body, MAX_REQUEST_BYTES);
+    if (!bytes) return json(413, { error: "payload_too_large" });
+    raw = new TextDecoder().decode(bytes);
     let parsed: unknown = null;
     try {
       parsed = raw ? JSON.parse(raw) : null;
