@@ -15,6 +15,9 @@ export async function pubmedAuditArgsHash(
     redacted.term_len = args.term.length;
     redacted.term_sha256 = await createHash(args.term);
   }
+  if (typeof args.pmid === "string") redacted.pmid = args.pmid;
+  if (typeof args.relation === "string") redacted.relation = args.relation;
+  if (typeof args.sort === "string") redacted.sort = args.sort;
   if (Array.isArray(args.pmids)) {
     redacted.pmid_count = args.pmids.length;
     redacted.pmids_sample = args.pmids.slice(0, 5);

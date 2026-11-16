@@ -172,6 +172,7 @@ export function createMcpServer(getContext: () => ToolContext): McpServer {
         min_date: z.string().regex(/^\d{4}(\/\d{2}(\/\d{2})?)?$/).optional(),
         max_date: z.string().regex(/^\d{4}(\/\d{2}(\/\d{2})?)?$/).optional(),
         publication_types: z.array(z.string().max(80)).max(5).optional(),
+        sort: z.enum(["relevance", "pub_date"]).optional(),
       }),
       annotations: { ...pubmedAnnotations, idempotentHint: false },
     },
@@ -206,6 +207,38 @@ export function createMcpServer(getContext: () => ToolContext): McpServer {
     },
     async (args, _extra) =>
       runPubMedTool(getContext, "auctus_pubmed_mesh_lookup", args, async (ctx) => pubmed.toolPubmedMeshLookup(ctx, args)),
+  );
+
+  server.registerTool(
+    "auctus_pubmed_verify_pmids",
+    {
+      description:
+        "Check that PMIDs exist on PubMed (catch invented citations). Returns found flag, date, publication types, and is_review per PMID; titles are untrusted.",
+      inputSchema: z.object({
+        pmids: z.array(z.string().regex(/^\d{1,9}$/)).min(1).max(50),
+      }),
+      annotations: { ...pubmedAnnotations, idempotentHint: true },
+    },
+    async (args, _extra) =>
+      runPubMedTool(getContext, "auctus_pubmed_verify_pmids", args, async (ctx) =>
+        pubmed.toolPubmedVerifyPmids(ctx, args.pmids),
+      ),
+  );
+
+  server.registerTool(
+    "auctus_pubmed_find_related",
+    {
+      description:
+        "PMIDs linked to one article: similar articles, articles citing it (cited_by), or its references. PMIDs only; fetch details with auctus_pubmed_verify_pmids or auctus_pubmed_get_articles.",
+      inputSchema: z.object({
+        pmid: z.string().regex(/^\d{1,9}$/),
+        relation: z.enum(["similar", "cited_by", "references"]),
+        max_results: z.number().int().min(1).max(25).optional(),
+      }),
+      annotations: { ...pubmedAnnotations, idempotentHint: true },
+    },
+    async (args, _extra) =>
+      runPubMedTool(getContext, "auctus_pubmed_find_related", args, async (ctx) => pubmed.toolPubmedFindRelated(ctx, args)),
   );
 
   return server;

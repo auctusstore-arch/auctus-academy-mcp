@@ -29,6 +29,7 @@ Tanpa secret produksi. Data tool memakai mock in-memory (`src/data/mock-store.ts
 | [security-checklist.md](./security-checklist.md) | Status checklist §11 |
 | [setup-muhammad.md](./setup-muhammad.md) | Langkah staging deploy (+ secret NCBI) |
 | [pubmed-phase1-plan.md](./pubmed-phase1-plan.md) | Rencana impor PubMed → Saring (dokumen saja) |
+| [idea-board-migration.md](./idea-board-migration.md) | Idea Board pindah dari PubMed MCP pihak ketiga ke Auctus MCP |
 | [keputusan-dan-pertanyaan.md](./keputusan-dan-pertanyaan.md) | Keputusan terbuka untuk Muhammad |
 
 ## Lingkungan Wrangler

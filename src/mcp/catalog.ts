@@ -47,6 +47,22 @@ export const PHASE0_TOOLS: ToolDef[] = [
     idempotentHint: true,
     openWorldHint: true,
   },
+  {
+    name: "auctus_pubmed_verify_pmids",
+    description: "Check PMIDs exist on PubMed; date, publication types, review flag.",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  {
+    name: "auctus_pubmed_find_related",
+    description: "Similar, cited-by, or reference PMIDs for one article (NCBI elink).",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
 ];
 
 export async function catalogSha256(): Promise<string> {
