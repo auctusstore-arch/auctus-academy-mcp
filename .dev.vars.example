@@ -1,0 +1,12 @@
+# Copy to .dev.vars for local wrangler dev (never commit .dev.vars).
+MOCK_MODE=1
+TOKEN_ENCRYPTION_SECRET=replace-with-32-byte-random-hex
+SUPABASE_URL=https://YOUR-STAGING-PROJECT.supabase.co
+SUPABASE_ANON_KEY=your-staging-anon-key
+SUPABASE_OAUTH_CLIENT_ID=auctus-mcp-gateway
+SUPABASE_OAUTH_CLIENT_SECRET=your-staging-oauth-client-secret
+SUPABASE_OAUTH_REDIRECT_URI=http://127.0.0.1:8787/consent/upstream-callback
+# NCBI E-utilities (staging/prod; mock mode skips live calls)
+NCBI_API_KEY=optional-ncbi-api-key-for-higher-rate
+NCBI_TOOL=auctus-mcp
+NCBI_EMAIL=you@auctus.academy

@@ -1,0 +1,6 @@
+Contact: mailto:security@auctus.academy
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: en, id
+Canonical: https://mcp.auctus.academy/.well-known/security.txt
+Policy: https://github.com/auctusstore-arch/auctus-academy-mcp/blob/main/SECURITY.md
+Acknowledgments: Planned — update after first production deploy
