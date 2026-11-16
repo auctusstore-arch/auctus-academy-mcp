@@ -4,6 +4,7 @@
  * The Worker reads R2 only after `mcp.saring_corpus_ref` passed as the user.
  */
 import { isMockMode } from "../config";
+import { readCapped } from "../lib/read-capped";
 import { wrapUntrustedText, type UntrustedText } from "../security/untrusted";
 import { mockCorpus } from "./mock-rpc";
 
@@ -22,14 +23,20 @@ export type CorpusRecord = {
 
 export type Corpus = { projectId: string; records: CorpusRecord[] };
 
+/** Same shape the SQL accepts for decisions; anything else in a corpus is dropped. */
+const RECORD_ID = /^[A-Za-z0-9:_.-]{1,200}$/;
 const R2_KEY = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/records\.json\.gz$/;
 const MAX_CORPUS_BYTES = 30 * 1024 * 1024;
 const CACHE_LIMIT = 3;
 const cache = new Map<string, Corpus>();
 
+/** Decompressed size cap: a corpus of 10,000 records is far below this; protects against a gzip bomb. */
+const MAX_CORPUS_DECOMPRESSED_BYTES = 120 * 1024 * 1024;
+
 async function gunzipJson(body: ReadableStream<Uint8Array>): Promise<unknown> {
-  const text = await new Response(body.pipeThrough(new DecompressionStream("gzip"))).text();
-  return JSON.parse(text) as unknown;
+  const bytes = await readCapped(body.pipeThrough(new DecompressionStream("gzip")), MAX_CORPUS_DECOMPRESSED_BYTES);
+  if (!bytes) throw new Error("corpus_too_large");
+  return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
 }
 
 export function normalizeCorpus(projectId: string, raw: unknown): Corpus {
@@ -39,7 +46,7 @@ export function normalizeCorpus(projectId: string, raw: unknown): Corpus {
   return {
     projectId,
     records: records
-      .filter((r): r is Record<string, unknown> => !!r && typeof r === "object" && typeof (r as { id?: unknown }).id === "string")
+      .filter((r): r is Record<string, unknown> => !!r && typeof r === "object" && typeof (r as { id?: unknown }).id === "string" && RECORD_ID.test((r as { id: string }).id))
       .map((r) => ({
         id: String(r.id).slice(0, 200),
         title: str(r.title, 2000),
@@ -82,26 +89,31 @@ export type DecisionRow = { status: string; reason: string; note: string; decide
 export type RecordView = {
   record_id: string;
   title: UntrustedText;
-  authors: string[];
+  authors: UntrustedText;
   year: string | null;
-  journal: string | null;
+  journal: UntrustedText | null;
   doi: string | null;
   pmid: string | null;
   abstract?: UntrustedText;
-  decision: { status: string; reason: string; note: string };
+  decision: { status: string; reason: UntrustedText | ""; note: UntrustedText | "" };
 };
 
 export function recordView(r: CorpusRecord, d: DecisionRow | undefined, withAbstract: boolean, abstractMax = 4000): RecordView {
   return {
     record_id: r.id,
     title: wrapUntrustedText(r.title ?? "", 600),
-    authors: (r.authors ?? []).slice(0, 6),
+    authors: wrapUntrustedText((r.authors ?? []).slice(0, 6).join("; "), 600),
     year: r.year || null,
-    journal: r.journal || null,
+    journal: r.journal ? wrapUntrustedText(r.journal, 300) : null,
     doi: r.doi || null,
     pmid: r.pmid || null,
     ...(withAbstract ? { abstract: wrapUntrustedText(r.abstract ?? "", abstractMax) } : {}),
-    decision: { status: d?.status ?? "undecided", reason: d?.reason ?? "", note: d?.note ?? "" },
+    // Reasons and notes may come from collaborators or other AI clients: data, not instructions.
+    decision: {
+      status: d?.status ?? "undecided",
+      reason: d?.reason ? wrapUntrustedText(d.reason, 2000) : "",
+      note: d?.note ? wrapUntrustedText(d.note, 4000) : "",
+    },
   };
 }
 

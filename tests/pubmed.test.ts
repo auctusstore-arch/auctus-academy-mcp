@@ -97,9 +97,10 @@ describe("pubmed rate limit keys", () => {
         store.set(key, value);
       },
     } as unknown as KVNamespace;
-    const user = await checkPubMedUserRateLimit(kv, "u1", "c1");
+    const env = { MCP_OPS: kv } as Env;
+    const user = await checkPubMedUserRateLimit(env, "u1", "c1");
     expect(user.allowed).toBe(true);
-    const global = await checkNcbiGlobalRateLimit(kv);
+    const global = await checkNcbiGlobalRateLimit(env);
     expect(global.allowed).toBe(true);
   });
 });
