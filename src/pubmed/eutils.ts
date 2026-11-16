@@ -224,6 +224,8 @@ export type PmidVerification = {
   pub_date_iso: string | null;
   publication_types: string[];
   is_review: boolean;
+  authors?: string[];
+  doi?: string | null;
 };
 
 /** Parses an esummary JSON body into one verification row per requested PMID. */
@@ -244,6 +246,8 @@ export function parseVerifyEsummary(body: unknown, requested: string[]): PmidVer
       pub_date_iso: isoFromSortPubDate(doc.sortpubdate),
       publication_types: pubTypes,
       is_review: isReviewPubTypes(pubTypes),
+      authors: Array.isArray(doc.authors) ? doc.authors.map((x) => String(x?.name ?? "")).filter(Boolean).slice(0, 10) : [],
+      doi: doc.articleids?.find((x) => x.idtype === "doi")?.value ?? null,
     };
   });
 }

@@ -33,15 +33,24 @@ WEB_APP_ORIGIN = "http://127.0.0.1:3000"
 
 [env.staging]
 name = "auctus-mcp-staging"
-vars = { ENVIRONMENT = "staging", MOCK_MODE = "0", RESOURCE_URL = "https://mcp-staging.auctus.academy/mcp", ISSUER_URL = "https://auth.mcp-staging.auctus.academy", WEB_APP_ORIGIN = "https://auctus.academy" }
+routes = [
+  { pattern = "auth.mcp-staging.auctus.academy", custom_domain = true },
+  { pattern = "mcp-staging.auctus.academy", custom_domain = true },
+]
+vars = { ENVIRONMENT = "staging", MOCK_MODE = "0", RESOURCE_URL = "https://mcp-staging.auctus.academy/mcp", ISSUER_URL = "https://auth.mcp-staging.auctus.academy", WEB_APP_ORIGIN = "https://staging.auctus.academy" }
 
 [[env.staging.kv_namespaces]]
 binding = "OAUTH_KV"
-id = "REPLACE_WITH_STAGING_OAUTH_KV_ID"
+id = "0926ed20b4984a6e8eb78bd4000488fc"
 
 [[env.staging.kv_namespaces]]
 binding = "MCP_OPS"
-id = "REPLACE_WITH_STAGING_MCP_OPS_KV_ID"
+id = "f48981df8c13425ba2f71666b1a831b6"
+
+# Read-only use in code: the corpus is read only after mcp.saring_corpus_ref passes as the user.
+[[env.staging.r2_buckets]]
+binding = "SARING_CORPUS"
+bucket_name = "saring-corpus-staging"
 
 [env.production]
 name = "auctus-mcp"

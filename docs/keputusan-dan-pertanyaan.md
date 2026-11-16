@@ -1,26 +1,23 @@
 # Keputusan & pertanyaan untuk Muhammad
 
-## Sudah diimplementasi di scaffold (menunggu konfirmasi deploy)
+## Default yang dipakai implementasi (bisa diubah)
 
-- Satu Worker `OAuthProvider` (AS + resource `/mcp`) untuk kesederhanaan Fase 0; split `auth.*` vs `mcp.*` tetap bisa dilakukan sebelum prod.
-- Consent Worker untuk **mock lokal**; staging/prod redirect ke `WEB_APP_ORIGIN` (halaman academy belum ada di repo ini).
-- Port data Supabase **belum di-wire** (`supabase_port_not_wired`); hanya mock.
-- DCR rate limit per IP: validasi host saja di callback; limit 10/jam di KV butuh hook dengan akses `env` atau WAF.
+| Topik | Default sekarang | Alasan |
+|-------|------------------|--------|
+| Satu Worker vs split AS/RS | Satu Worker, dua hostname | Lebih sederhana; split tetap mungkin |
+| Kolaborator Saring pakai MCP (Q5) | **Mati per proyek**, pemilik bisa menyalakan di Koneksi AI | Data proyek ikut terkirim ke penyedia AI kolaborator |
+| Approval W2 (Q7) | **Hanya di web Auctus**; model mendapat `approval_path` | Paling aman; elicitation bisa ditambah nanti |
+| Ambang W2 | >20 record atau >5 exclude per operasi **dan kumulatif per jam** per klien + proyek | Menutup celah pemecahan panggilan (review) |
+| Approval perlu login baru | Sesi web ≤12 jam (`amr`) | PRD §8 |
+| `auctus_changes_commit` | Tidak ada: approval di web langsung menerapkan | Tidak ada jeda antara setuju dan terapkan |
+| Revert perubahan yang disetujui manusia | Butuh approval lagi | Review |
+| Free dan Idea Board | Free tetap tanpa MCP | Keputusan 13 Nov; lihat `idea-board-migration.md` |
 
-## Pertanyaan terbuka (PRD §15)
+## Masih terbuka (PRD §15)
 
-3. ChatGPT Plus read-only — diterima?
-5. Kolaborator Saring pakai MCP?
-7. Approval W2 hanya web vs elicitation?
-8. Anggaran pentest eksternal?
-9. Listing direktori Fase 3 vs custom connector saja?
-10. **Daftar user pilot** beta read-only — siapa saja?
-11. Review legal UU PDP — siapa?
-
-## Keputusan yang perlu Muhammad sebelum staging
-
-1. Apakah satu Worker atau split AS/RS (dua subdomain)?
-2. Apakah migrasi `mcp.*` digabung satu PR dengan RLS gateway di academy?
-3. Nilai awal `pilotClientIds` dan `pilot_users` di Supabase.
-4. Staging Supabase project ref (hindari prod).
-5. Siapkan OAuth Supabase upstream client secret & rotasi.
+3. ChatGPT Plus read-only: diterima?
+8. Anggaran pentest eksternal (gerbang Fase 1)?
+9. Listing direktori Fase 3?
+10. Daftar user pilot.
+11. Review legal UU PDP.
+- Free di Idea Board (lihat `idea-board-migration.md`).

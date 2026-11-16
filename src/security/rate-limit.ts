@@ -1,7 +1,4 @@
-import {
-  DCR_RATE_LIMIT_PER_HOUR,
-  READ_RATE_LIMIT_PER_MINUTE,
-} from "../config";
+import { DCR_RATE_LIMIT_PER_HOUR, READ_RATE_LIMIT_PER_MINUTE, WRITE_RATE_LIMIT_PER_MINUTE } from "../config";
 import { NCBI_GLOBAL_RATE_PER_SECOND, PUBMED_USER_RATE_PER_MINUTE } from "../pubmed/constants";
 
 type Bucket = { count: number; resetAt: number };
@@ -47,4 +44,12 @@ export async function checkPubMedUserRateLimit(
 export async function checkNcbiGlobalRateLimit(kv: KVNamespace): Promise<{ allowed: boolean; retryAfterSec?: number }> {
   const key = "rl:ncbi:global";
   return bump(kv, key, NCBI_GLOBAL_RATE_PER_SECOND, 1000);
+}
+/** Writes: 10 per minute per user + client (PRD §9). */
+export async function checkWriteRateLimit(
+  kv: KVNamespace,
+  userId: string,
+  clientId: string,
+): Promise<{ allowed: boolean; retryAfterSec?: number }> {
+  return bump(kv, `rl:write:${userId}:${clientId}`, WRITE_RATE_LIMIT_PER_MINUTE, 60_000);
 }

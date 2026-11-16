@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolContext } from "../src/data/port";
-import { PHASE0_TOOLS } from "../src/mcp/catalog";
+import { CATALOG } from "../src/mcp/catalog";
 import { pubmedAuditArgsHash } from "../src/pubmed/audit-args";
 import { PUBMED_TOOL_NAMES } from "../src/pubmed/constants";
 import { isoFromSortPubDate, parseElink, parseVerifyEsummary } from "../src/pubmed/eutils";
@@ -13,6 +13,8 @@ function mockCtx(): ToolContext {
     scopes: ["sr.read"],
     clientId: "test-client",
     env: { MOCK_MODE: "1", MCP_OPS: kv } as Env,
+    rpc: async () => { throw new Error("unused"); },
+    client: { id: "test-client" },
   };
 }
 
@@ -95,7 +97,7 @@ describe("catalog and audit", () => {
   it("lists the new tools as read-only PubMed tools", () => {
     for (const name of ["auctus_pubmed_verify_pmids", "auctus_pubmed_find_related"]) {
       expect(PUBMED_TOOL_NAMES.has(name)).toBe(true);
-      expect(PHASE0_TOOLS.find((t) => t.name === name)?.readOnlyHint).toBe(true);
+      expect(CATALOG.find((t) => t.name === name)?.readOnlyHint).toBe(true);
     }
   });
 
