@@ -5,6 +5,22 @@ const INJECTION_PATTERNS = [
   /<\s*script/i,
   /\bexecute\b.*\bcommand\b/i,
   /send\s+(all\s+)?data\s+to\s+https?:/i,
+  // External pentest 17 Nov 2026 (E-4): the corpus records below were not flagged.
+  // Tool names never occur in a real title or abstract.
+  /\bauctus_[a-z_]{3,}/i,
+  // Text that addresses the assistant or claims to carry trusted instructions.
+  /\b(ai\s+)?assistant\s*:/i,
+  /\btrusted\s+instructions?\b/i,
+  /\b(do\s+not|don't|never)\s+(tell|inform|notify)\s+the\s+user\b/i,
+  /abaikan\s+(semua\s+)?(instruksi|perintah)/i,
+  // Attempts to close or reopen the untrusted wrapper.
+  /<\s*\/?\s*untrusted_content\b/i,
+  // Markdown links are a common exfiltration carrier and do not belong in citation metadata.
+  /\[[^\]]{1,80}\]\(https?:\/\//i,
+  // Bulk rewrites of screening state.
+  /\b(change|set|mark)\s+(every|all)\b.{0,60}\b(to|as)\s+"?(exclude|include|maybe)\b/i,
+  // Hidden text: runs of zero-width characters, or bidirectional overrides.
+  /[\u200b\u200c\u200d\u2060\ufeff]{2,}|[\u202a-\u202e\u2066-\u2069]/,
 ];
 
 export type UntrustedText = {
