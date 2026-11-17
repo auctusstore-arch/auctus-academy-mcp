@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:secrets": "bash scripts/check-no-service-role.sh",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "node pentest/smoke.mjs",
+    "load:rate-limit": "node pentest/load-rate-limit.mjs"
   },
   "repository": {
     "type": "git",
