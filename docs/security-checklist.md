@@ -22,6 +22,6 @@ Legenda: ✅ diimplementasi + diuji lokal | 🔜 butuh deploy/konfigurasi | ❌ 
 | Koneksi AI: cabut satu/semua langsung berlaku | ✅ diuji di browser lokal |
 | Pencabutan otomatis saat ganti password / akses berakhir | ✅ unit (session check, refresh `invalid_grant`); 🔜 uji di staging |
 | Kill switch global + per klien | ✅ |
-| Dependensi dipin, secret di store, RUNBOOK rotasi | ✅ lockfile; 🔜 RUNBOOK |
+| Dependensi dipin, secret di store, RUNBOOK rotasi | ✅ lockfile; ✅ RUNBOOK (`docs/runbook-rotasi-secret.md`) |
 | Pentest internal (Fase 0), pentest eksternal + red-team (Fase 1), uji abuse kuota + pentest regresi (Fase 2) | 👤 |
 | Kebijakan privasi / UU PDP | 👤 |

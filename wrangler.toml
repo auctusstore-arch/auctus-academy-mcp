@@ -107,6 +107,12 @@ id = "REPLACE_WITH_PROD_OAUTH_KV_ID"
 [[env.production.kv_namespaces]]
 binding = "MCP_OPS"
 id = "REPLACE_WITH_PROD_MCP_OPS_KV_ID"
+
+# Read-only use in code: the corpus is read only after mcp.saring_corpus_ref passes as the user.
+[[env.production.r2_buckets]]
+binding = "SARING_CORPUS"
+bucket_name = "saring-corpus"
+
 [[env.production.ratelimits]]
 name = "RL_READ"
 namespace_id = "17871"
