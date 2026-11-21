@@ -53,6 +53,15 @@ name = "RL_NCBI"
 namespace_id = "17894"
 simple = { limit = 90, period = 10 }
 
+# Single-use lock per OAuth authorization code (pentest W-Replay). Not inherited by [env.*]: declared in each.
+[[durable_objects.bindings]]
+name = "AUTH_CODE_GUARD"
+class_name = "AuthCodeGuard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AuthCodeGuard"]
+
 [env.staging]
 name = "auctus-mcp-staging"
 routes = [
@@ -96,6 +105,15 @@ name = "RL_NCBI"
 namespace_id = "17884"
 simple = { limit = 90, period = 10 }
 
+# Single-use lock per OAuth authorization code (pentest W-Replay). Not inherited by [env.*]: declared in each.
+[[env.staging.durable_objects.bindings]]
+name = "AUTH_CODE_GUARD"
+class_name = "AuthCodeGuard"
+
+[[env.staging.migrations]]
+tag = "v1"
+new_sqlite_classes = ["AuthCodeGuard"]
+
 [env.production]
 name = "auctus-mcp-local" # never the production name: a bare `wrangler deploy` must not ship mock mode
 vars = { ENVIRONMENT = "production", MOCK_MODE = "0", RESOURCE_URL = "https://mcp.auctus.academy/mcp", ISSUER_URL = "https://auth.mcp.auctus.academy", WEB_APP_ORIGIN = "https://auctus.academy" }
@@ -133,3 +151,12 @@ simple = { limit = 30, period = 60 }
 name = "RL_NCBI"
 namespace_id = "17874"
 simple = { limit = 90, period = 10 }
+
+# Single-use lock per OAuth authorization code (pentest W-Replay). Not inherited by [env.*]: declared in each.
+[[env.production.durable_objects.bindings]]
+name = "AUTH_CODE_GUARD"
+class_name = "AuthCodeGuard"
+
+[[env.production.migrations]]
+tag = "v1"
+new_sqlite_classes = ["AuthCodeGuard"]
