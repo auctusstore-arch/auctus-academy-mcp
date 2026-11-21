@@ -21,16 +21,24 @@ export const SCOPE_LABELS_ID: Record<string, string> = {
   offline_access: "Tetap terhubung tanpa login ulang (maks 30 hari)",
 };
 
-/** Allowed redirect URI hosts for DCR (PRD §2 T10). */
-export const DCR_REDIRECT_HOST_ALLOWLIST = new Set([
-  "claude.ai",
-  "chatgpt.com",
-  "www.cursor.com",
-  "cursor.com",
-  "grok.com",
-  "x.ai",
-  "127.0.0.1",
-  "localhost",
+/**
+ * Exact https redirect URIs that may receive an authorization code (pentest F6: a
+ * host allowlist is not enough, one open redirect on the host would leak codes).
+ * Loopback http redirects are handled separately (RFC 8252) in security/redirect-uri.ts.
+ *
+ * Each entry was verified against the vendor's official documentation on 2026-11-19
+ * (source in the comment). To add a vendor: read its docs, copy the URI verbatim, add
+ * it here with a test in tests/redirect-pinning.test.ts, deploy. A vendor whose
+ * callback is not documented stays OFF until a real login proves the exact URI.
+ */
+export const PINNED_REDIRECT_URIS: ReadonlySet<string> = new Set([
+  // Claude (web, desktop, mobile): https://support.claude.com/en/articles/11175166
+  "https://claude.ai/api/mcp/auth_callback",
+  // ChatGPT stable redirect, used because this server advertises RFC 9207 issuer
+  // identification: https://developers.openai.com/plugins/build/auth
+  "https://chatgpt.com/connector_platform_oauth_redirect",
+  // Cursor web and agents (the desktop app uses loopback): https://cursor.com/docs/mcp
+  "https://www.cursor.com/agents/mcp/oauth/callback",
 ]);
 
 export const READ_RATE_LIMIT_PER_MINUTE = 60;
