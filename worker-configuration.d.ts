@@ -2,6 +2,8 @@
 interface Env {
   OAUTH_KV: KVNamespace;
   MCP_OPS: KVNamespace;
+  /** Per-authorization-code single-use lock (pentest W-Replay). Missing only in local mock mode. */
+  AUTH_CODE_GUARD?: DurableObjectNamespace<import("./src/security/auth-code-guard").AuthCodeGuard>;
   ENVIRONMENT: string;
   MOCK_MODE: string;
   RESOURCE_URL: string;
