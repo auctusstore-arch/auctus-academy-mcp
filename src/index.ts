@@ -1,4 +1,4 @@
-import OAuthProvider, { OAuthError, type OAuthResourceContext, type TokenExchangeCallbackOptions } from "@cloudflare/workers-oauth-provider";
+import OAuthProvider, { getOAuthApi, OAuthError, type OAuthProviderOptions, type OAuthResourceContext, type TokenExchangeCallbackOptions } from "@cloudflare/workers-oauth-provider";
 import {
   ACCESS_TOKEN_TTL_SECONDS,
   DCR_CLIENT_TTL_SECONDS,
@@ -15,6 +15,7 @@ import { handleMcpRequest } from "./mcp/handler";
 import { loadKillSwitch } from "./security/kill-switch";
 import { checkDcrRateLimit } from "./security/rate-limit";
 import { isRedirectAllowed } from "./security/redirect-uri";
+import { withAuthCodeGuard } from "./security/token-guard";
 
 const mcpApiHandler = {
   async fetch(request: Request, env: Env, ctx: OAuthResourceContext<AuthProps>) {
@@ -47,9 +48,9 @@ export async function tokenExchangeCallback(options: TokenExchangeCallbackOption
   }
 }
 
-function buildProvider(env: Env) {
+function providerOptions(env: Env): OAuthProviderOptions<Env> {
   const issuer = env.ISSUER_URL.replace(/\/$/, "");
-  return new OAuthProvider<Env>({
+  return {
     apiRoute: "/mcp",
     apiHandler: mcpApiHandler as never,
     defaultHandler: { fetch: (req, environment) => defaultHandler(req, environment) },
@@ -75,7 +76,11 @@ function buildProvider(env: Env) {
       }
       return undefined;
     },
-  });
+  };
+}
+
+function buildProvider(env: Env) {
+  return new OAuthProvider<Env>(providerOptions(env));
 }
 
 let cachedProvider: OAuthProvider<Env> | null = null;
@@ -107,10 +112,24 @@ export default {
       cachedProvider = buildProvider(env);
       cachedProviderKey = key;
     }
-    return cachedProvider.fetch(request, env, ctx);
+    const provider = cachedProvider;
+    // Authorization codes must be single-use even under concurrent exchanges (pentest W-Replay).
+    if (request.method === "POST" && path === "/token") {
+      return withAuthCodeGuard(
+        request,
+        {
+          guard: env.AUTH_CODE_GUARD,
+          mockMode: isMockMode(env),
+          revokeGrant: (grantId, userId) => getOAuthApi(providerOptions(env), env).revokeGrant(grantId, userId),
+        },
+        () => provider.fetch(request, env, ctx),
+      );
+    }
+    return provider.fetch(request, env, ctx);
   },
 };
 
+export { AuthCodeGuard } from "./security/auth-code-guard";
 export { buildProvider };
 
 /** "platform" only when every redirect URI is one of the pinned https platform URIs. */

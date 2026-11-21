@@ -9,6 +9,7 @@ Legenda: ✅ diimplementasi + diuji lokal | 🔜 butuh deploy/konfigurasi | ❌ 
 | CIMD + DCR terbatas (URI persis dipin per vendor, 10/jam/IP, TTL 90 hari) | ✅ |
 | Consent milik Auctus, CSRF, `frame-ancestors`, loopback warning | ✅ |
 | Token ≤10 menit, refresh rotasi, idle 7 / absolut 30 hari | ✅ |
+| Kode otorisasi sekali pakai di bawah penukaran paralel (W-Replay) | ✅ unit (`tests/auth-code-guard.test.ts`); 🔜 uji race di staging (`pentest/replay-race.mjs`) |
 | Tanpa token passthrough | ✅ |
 | Scope + entitlement (Free ditolak) + `can_access_project` | ✅ pgTAP + e2e |
 | Tanpa service role di jalur tool | ✅ `scripts/check-no-service-role.sh` |
