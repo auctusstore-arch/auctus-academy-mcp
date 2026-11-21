@@ -2,7 +2,6 @@ import OAuthProvider, { OAuthError, type OAuthResourceContext, type TokenExchang
 import {
   ACCESS_TOKEN_TTL_SECONDS,
   DCR_CLIENT_TTL_SECONDS,
-  DCR_REDIRECT_HOST_ALLOWLIST,
   isMockMode,
   MCP_SCOPE_LIST,
   MCP_SCOPES,
@@ -15,7 +14,7 @@ import { refreshUpstream, upstreamConfigFromEnv, UpstreamError } from "./auth/up
 import { handleMcpRequest } from "./mcp/handler";
 import { loadKillSwitch } from "./security/kill-switch";
 import { checkDcrRateLimit } from "./security/rate-limit";
-import { hostOfRedirectUri } from "./security/redirect-uri";
+import { isRedirectAllowed } from "./security/redirect-uri";
 
 const mcpApiHandler = {
   async fetch(request: Request, env: Env, ctx: OAuthResourceContext<AuthProps>) {
@@ -68,10 +67,10 @@ function buildProvider(env: Env) {
     tokenExchangeCallback,
     clientRegistrationCallback(options) {
       const redirects = Array.isArray(options.clientMetadata.redirect_uris) ? (options.clientMetadata.redirect_uris as string[]) : [];
+      if (redirects.length === 0) return { code: "invalid_redirect_uri", description: "redirect_uris is required" };
       for (const uri of redirects) {
-        const host = hostOfRedirectUri(uri);
-        if (!host || !DCR_REDIRECT_HOST_ALLOWLIST.has(host)) {
-          return { code: "invalid_redirect_uri", description: "redirect host is not on the Auctus allowlist" };
+        if (!isRedirectAllowed(uri)) {
+          return { code: "invalid_redirect_uri", description: "redirect_uri is not on the Auctus allowlist" };
         }
       }
       return undefined;
@@ -114,15 +113,14 @@ export default {
 
 export { buildProvider };
 
-/** "platform" only when every redirect URI is on an allowlisted https platform host. */
+/** "platform" only when every redirect URI is one of the pinned https platform URIs. */
 async function redirectClassOf(request: Request): Promise<"platform" | "other"> {
   try {
     const body = (await request.clone().json()) as { redirect_uris?: unknown };
     const uris = Array.isArray(body.redirect_uris) ? body.redirect_uris.map(String) : [];
     if (!uris.length) return "other";
     return uris.every((u) => {
-      const url = new URL(u);
-      return url.protocol === "https:" && DCR_REDIRECT_HOST_ALLOWLIST.has(url.hostname) && url.hostname !== "localhost";
+      return new URL(u).protocol === "https:" && isRedirectAllowed(u);
     })
       ? "platform"
       : "other";

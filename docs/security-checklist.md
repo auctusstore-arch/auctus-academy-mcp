@@ -6,7 +6,7 @@ Legenda: ✅ diimplementasi + diuji lokal | 🔜 butuh deploy/konfigurasi | ❌ 
 |------|--------|
 | PRM RFC 9728, 401 + `resource_metadata` + `scope` | ✅ smoke |
 | PKCE S256, `iss`, `resource`, redirect exact, `state` sekali pakai | ✅ smoke (iss + state dikembalikan, replay handle ditolak) |
-| CIMD + DCR terbatas (allowlist, 10/jam/IP, TTL 90 hari) | ✅ |
+| CIMD + DCR terbatas (URI persis dipin per vendor, 10/jam/IP, TTL 90 hari) | ✅ |
 | Consent milik Auctus, CSRF, `frame-ancestors`, loopback warning | ✅ |
 | Token ≤10 menit, refresh rotasi, idle 7 / absolut 30 hari | ✅ |
 | Tanpa token passthrough | ✅ |

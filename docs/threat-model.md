@@ -13,7 +13,7 @@ Status: **Fase 0 sampai 2 diimplementasi (kode + tes), belum dideploy.** Kolom "
 | T7 Session hijacking | Stateless; batch JSON-RPC ditolak | `tests/auth-upstream.test.ts` |
 | T8 Lintas tenant / fail-open gateway | **Deny-by-default** `mcp.pre_request`: token ber-`client_id` hanya boleh `POST /rpc/*` di schema `mcp`; Storage hanya baca `ma-results/{uid}/`; Realtime ditutup; API mobile menolak token OAuth; RLS + cek kepemilikan di setiap RPC | pgTAP `supabase/tests/mcp_gateway.sql` (academy), uji HTTP PostgREST nyata (403 untuk tabel, schema lain, GraphQL), `tests/e2e-supabase.test.ts` |
 | T9 Scope | Scope bertahap; tool tanpa scope menjawab `insufficient_scope` + scope yang dibutuhkan; consent hanya menerima scope yang didukung | `tests/tools.test.ts`, `tests/auth-upstream.test.ts` |
-| T10 DCR/CIMD | CIMD aktif; DCR allowlist host (400 `invalid_redirect_uri`) + 10/jam per IP | smoke (`register evil host 400`, `429` setelah 10) |
+| T10 DCR/CIMD | CIMD aktif; redirect https hanya URI persis yang dipin (`PINNED_REDIRECT_URIS`), loopback hanya `http` (RFC 8252); DCR 400 `invalid_redirect_uri` untuk selain itu, 10/jam per IP | `tests/redirect-pinning.test.ts`, `pentest/redirect-pins.mjs` |
 | T11 Token TTL / pencabutan | Akses 10 menit; refresh dirotasi; refresh MCP menyegarkan token upstream dan `invalid_grant` mencabut grant bila Supabase menolak; cek sesi upstream per panggilan (cache 60 detik) sehingga ganti password / logout semua perangkat berlaku dalam sekitar 1 menit | `tests/auth-upstream.test.ts` |
 | T12 Tulis destruktif | W1 dengan change set + undo; W2 (>20 record atau >5 exclude, **termasuk kumulatif per jam per klien+proyek**); approval hanya dari sesi web (bukan token gateway) dengan login ≤12 jam dan hash payload; revert dari perubahan yang disetujui manusia butuh approval lagi; hapus/undang/korpus = W3 tidak ada tool | pgTAP + `tests/tools.test.ts` |
 | T13 Kuota / DoS | Baca 60/menit, tulis 10/menit, W2 maks 10/jam, run selalu W2 + `ma.enqueue_job` (rate 20/jam, satu job aktif), PubMed 30/menit + NCBI 10/detik | `src/security/rate-limit.ts`, SQL |
@@ -33,3 +33,12 @@ Status: **Fase 0 sampai 2 diimplementasi (kode + tes), belum dideploy.** Kolom "
 - Realtime `postgres_changes` untuk token gateway tetap dibatasi RLS biasa (data milik sendiri), tidak ditutup total.
 - Consent kedua di academy dilewati Supabase bila akun sudah pernah memberi izin ke gateway; consent per aplikasi AI di Worker tetap selalu tampil.
 - Alert Telegram (W2 ditolak >3/hari, lonjakan, negara baru) belum dibuat.
+
+## Menambah vendor ke daftar redirect
+
+1. Baca dokumentasi resmi vendor dan salin URI callback persis (skema, host, path), tanpa menebak atau membuat sendiri.
+2. Jika callback berubah per instalasi atau per konektor dan tidak bisa dipin persis, jangan tambahkan. Tulis keputusan di sini.
+3. Tambahkan URI ke `PINNED_REDIRECT_URIS` di `src/config.ts` dengan komentar sumbernya, dan satu uji di `tests/redirect-pinning.test.ts`.
+4. Deploy ke staging, jalankan `pentest/redirect-pins.mjs`, lalu uji login nyata dengan klien itu.
+
+Dimatikan sampai terverifikasi: Grok (docs.x.ai tidak mencantumkan callback), varian `claude.com`, dan `cursor.com` tanpa `www`.
