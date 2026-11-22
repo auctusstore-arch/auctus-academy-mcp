@@ -115,16 +115,20 @@ tag = "v1"
 new_sqlite_classes = ["AuthCodeGuard"]
 
 [env.production]
-name = "auctus-mcp-local" # never the production name: a bare `wrangler deploy` must not ship mock mode
+name = "auctus-mcp"
+routes = [
+  { pattern = "auth.mcp.auctus.academy", custom_domain = true },
+  { pattern = "mcp.auctus.academy", custom_domain = true },
+]
 vars = { ENVIRONMENT = "production", MOCK_MODE = "0", RESOURCE_URL = "https://mcp.auctus.academy/mcp", ISSUER_URL = "https://auth.mcp.auctus.academy", WEB_APP_ORIGIN = "https://auctus.academy" }
 
 [[env.production.kv_namespaces]]
 binding = "OAUTH_KV"
-id = "REPLACE_WITH_PROD_OAUTH_KV_ID"
+id = "87da4be5f56643c7a355da7d29a24a5e"
 
 [[env.production.kv_namespaces]]
 binding = "MCP_OPS"
-id = "REPLACE_WITH_PROD_MCP_OPS_KV_ID"
+id = "add23a50d51246708f8afa9d4b5ee4d0"
 
 # Read-only use in code: the corpus is read only after mcp.saring_corpus_ref passes as the user.
 [[env.production.r2_buckets]]

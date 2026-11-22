@@ -1,10 +1,10 @@
 # Runbook: deploy production dan rotasi secret
 
-Tidak ada deploy otomatis. Semua langkah dijalankan manual oleh pemilik akun Cloudflare. Nama Worker production di `wrangler.toml` sengaja `auctus-mcp-local` agar `wrangler deploy` tanpa `--env` tidak meluncurkan mode mock. Sebelum deploy pertama, ganti dengan nama production yang diputuskan pemilik (misalnya `auctus-mcp`) dalam PR terpisah.
+Tidak ada deploy otomatis. Semua langkah dijalankan manual oleh pemilik akun Cloudflare. Worker production bernama `auctus-mcp` (blok `env.production`); nama top-level `auctus-mcp-local` tetap dipakai agar `wrangler deploy` tanpa `--env` tidak pernah meluncurkan ke production atau membawa mode mock. Selalu deploy dengan `--env production` atau `--env staging`.
 
 ## Prasyarat deploy production
 
-1. Buat KV `OAUTH_KV` dan `MCP_OPS`, lalu isi ID di blok `env.production` (gantikan `REPLACE_WITH_PROD_*`).
+1. KV production sudah dibuat (22 Nov 2026): `OAUTH_KV` (`87da4be5...`) dan `MCP_OPS` (`add23a50...`), ID penuh ada di blok `env.production`. Judul di dashboard: `production-OAUTH_KV` dan `production-MCP_OPS`.
 2. Bucket R2 `saring-corpus` sudah ada (dipakai situs web); binding baca `SARING_CORPUS` sudah dideklarasikan di blok production.
 3. Isi semua secret (lihat tabel). Jangan tempel nilai secret di chat, issue, atau commit.
 4. Custom domain `mcp.auctus.academy` dan `auth.mcp.auctus.academy`, plus aturan WAF rate limit pada header `Mcp-Method` dan `Mcp-Name`.
